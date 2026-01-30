@@ -115,6 +115,22 @@ def setup_output_args(parser: argparse.ArgumentParser) -> None:
         help="Enable debug mode"
     )
 
+def setup_tts_args(parser: argparse.ArgumentParser) -> None:
+    """TTS関連の引数を設定"""
+    tts_group = parser.add_argument_group('TTS Settings')
+    tts_group.add_argument(
+        "--tts-enabled",
+        action="store_true",
+        default=None,
+        help="Enable Text-to-Speech"
+    )
+    tts_group.add_argument(
+        "--no-tts",
+        action="store_false",
+        dest="tts_enabled",
+        help="Disable Text-to-Speech"
+    )
+
 def get_parser_transcription() -> argparse.ArgumentParser:
     """文字起こし用の引数パーサーを取得"""
     parser = argparse.ArgumentParser(
@@ -141,6 +157,7 @@ def get_parser_translation() -> argparse.ArgumentParser:
     setup_language_args(parser, translation=True)
     setup_output_args(parser)
     setup_llm_args(parser)
+    setup_tts_args(parser)
     
     return parser
 

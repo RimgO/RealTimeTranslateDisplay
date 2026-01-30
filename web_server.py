@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Set, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -43,6 +44,15 @@ except ImportError:
 
 
 app = FastAPI(title="Audio Recognition System Web UI")
+
+# CORS設定
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # グローバル設定とステート
 class ServerState:
@@ -140,17 +150,21 @@ async def websocket_endpoint(websocket: WebSocket):
                     mode = settings.get("mode") or server_state.config.get("mode", "translation")
                     source_lang = settings.get("source_lang") or server_state.config.get("source_lang")
                     target_lang = settings.get("target_lang") or server_state.config.get("target_lang")
+                    tts_enabled = settings.get("tts_enabled")
+                    if tts_enabled is None:
+                        tts_enabled = server_state.config.get("tts_enabled", True)
 
                     # サーバー設定を更新
                     server_state.config["mode"] = mode
                     server_state.config["source_lang"] = source_lang
                     server_state.config["target_lang"] = target_lang
+                    server_state.config["tts_enabled"] = tts_enabled
 
                     # 認識システムを起動
                     web_ui_url = "http://localhost:8000"
                     recognition_thread = threading.Thread(
                         target=run_recognition_system,
-                        args=("config.yaml", source_lang, target_lang, web_ui_url, mode),
+                        args=("config.yaml", source_lang, target_lang, web_ui_url, mode, tts_enabled),
                         daemon=True
                     )
                     recognition_thread.start()
@@ -244,7 +258,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 if "target_lang" in settings:
                     server_state.config["target_lang"] = settings["target_lang"]
                 if "tts_enabled" in settings:
-                    server_state.config["tts_enabled"] = settings["tts_enabled"]
+                    tts_enabled = bool(settings["tts_enabled"])
+                    server_state.config["tts_enabled"] = tts_enabled
+                    if server_state.config_manager:
+                        server_state.config_manager.set_tts_enabled(tts_enabled)
+                        logger.info(f"Live updated TTS to: {tts_enabled} (type: {type(tts_enabled)})")
 
                 logger.info(f"Settings updated: {server_state.config}")
 
@@ -487,7 +505,8 @@ def run_recognition_system(config_path: str = "config.yaml",
                           source_lang: Optional[str] = None,
                           target_lang: Optional[str] = None,
                           web_ui_url: str = "http://localhost:8000",
-                          mode: str = "translation"):
+                          mode: str = "translation",
+                          tts_enabled: bool = True):
     """
     音声認識システムを別スレッドで起動
 
@@ -497,6 +516,7 @@ def run_recognition_system(config_path: str = "config.yaml",
         target_lang: 翻訳先言語
         web_ui_url: Web UIサーバーのURL
         mode: 動作モード ('translation' or 'transcript')
+        tts_enabled: TTS有効化フラグ
     """
     try:
         # モードに応じてメインスクリプトを選択
@@ -519,6 +539,12 @@ def run_recognition_system(config_path: str = "config.yaml",
                 sys.argv.extend(["--source-lang", source_lang])
             if mode == "translation" and target_lang:
                 sys.argv.extend(["--target-lang", target_lang])
+            
+            if mode == "translation":
+                if tts_enabled:
+                    sys.argv.append("--tts-enabled")
+                else:
+                    sys.argv.append("--no-tts")
 
             # メイン関数を実行（ブロッキング）
             # システムインスタンスは別スレッドで定期的にチェック

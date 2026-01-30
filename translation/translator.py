@@ -13,6 +13,7 @@ import gc
 import torch
 from collections import deque
 from typing import Dict, Optional, List, Tuple, Any, Union
+import threading
 from threading import Event
 
 # Logging
@@ -25,6 +26,7 @@ if sys.platform == 'darwin':
     try:
         from mlx_lm import load, generate
         from mlx_lm.sample_utils import make_sampler, make_logits_processors
+        import mlx.core as mx
     except ImportError as e:
         logger.info(f"ERROR: Failed to import MLX sampling utilities: {e}", file=sys.stderr)
         raise
@@ -62,7 +64,8 @@ class Translation:
         lang_config: Any,
         debug: bool = False,
         tts: Optional[Any] = None,
-        web_ui: Optional[Any] = None
+        web_ui: Optional[Any] = None,
+        mlx_lock: Optional[threading.Lock] = None
     ) -> None:
         """
         Args:
@@ -78,6 +81,7 @@ class Translation:
         self.debug = debug
         self.tts = tts  # TTS機能
         self.web_ui = web_ui  # Web UI Bridge
+        self.mlx_lock = mlx_lock  # MLX競合防止用ロック
 
         # ConfigManagerから設定を取得
         if hasattr(config_manager, 'translation'):
@@ -150,6 +154,9 @@ class Translation:
         self.model_type = None  # 'transformers', 'mlx', 'gguf', 'api'のいずれか
         self.is_gpt_oss = False  # GPT-OSSモデルかどうか
         
+        # 用語集
+        self.glossary = {}
+
         # プロンプトテンプレート
         self.prompt_template = self._setup_translation_prompt()
         
@@ -207,6 +214,16 @@ class Translation:
                 "repetition_penalty": 1.1,
             }
 
+
+
+    def update_glossary(self, glossary: Dict[str, str]):
+        """用語集を更新"""
+        self.glossary = glossary
+        if self.debug:
+            logger.info(f"用語集を更新しました: {len(self.glossary)} entries")
+        # プロンプト再構築
+        self.prompt_template = self._setup_translation_prompt()
+
     def _setup_translation_prompt(self) -> str:
         """翻訳方向に応じたプロンプトテンプレートを設定"""
         from config_manager import LanguageConfig
@@ -214,16 +231,28 @@ class Translation:
         # 言語名の取得
         source_name = LanguageConfig.get_language_name(self.lang_config.source)
         target_name = LanguageConfig.get_language_name(self.lang_config.target)
-        return (
+        
+        prompt = (
             f"以下の{source_name}を文脈を考慮して適切な{target_name}に翻訳してください。"
             f"文脈を考慮しつつ、自然な{target_name}になるよう翻訳してください。"
             f"翻訳のみを出力し、説明や注記などの出力は一切不要です。\n\n"
+        )
+
+        # 用語集の注入
+        if hasattr(self, 'glossary') and self.glossary:
+            prompt += "【重要】以下の用語は指定通りに翻訳してください:\n"
+            for k, v in self.glossary.items():
+                prompt += f"- {k} -> {v}\n"
+            prompt += "\n"
+
+        prompt += (
             f"Previous context:\n"
             f"{{context}}\n\n"
             f"Current text to translate:\n"
             f"{{text}}\n\n"
             f"{target_name}訳:"
         )
+        return prompt
     
     def _setup_output_files(self):
         """出力ファイルの設定"""
@@ -327,7 +356,50 @@ class Translation:
                 if torch.backends.mps.is_available():
                     torch.mps.empty_cache()
                 gc.collect()
-                self.llm_model, self.llm_tokenizer = load(path_or_hf_repo=self.model_path)
+                # MLX 0.4.0+ supports trust_remote_code in load()
+                
+                # Check for Plamo explicitly
+                if 'plamo' in self.model_path.lower():
+                    # Plamo model detected
+                    logger.info("Plamo model detected: attempting to disable Mamba via config")
+                    
+                    try:
+                        from transformers import AutoConfig
+                        model_config = AutoConfig.from_pretrained(self.model_path, trust_remote_code=True)
+                        if hasattr(model_config, 'mamba_enabled'):
+                            model_config.mamba_enabled = False
+                            logger.info("  -> mamba_enabled set to False")
+                        
+                        # mlx_lm.load does not accept trust_remote_code directly.
+                        # It must be passed via tokenizer_config.
+                        self.llm_model, self.llm_tokenizer = load(
+                            path_or_hf_repo=self.model_path,
+                            model_config=model_config,
+                            tokenizer_config={"trust_remote_code": True}
+                        )
+                    except TypeError as e:
+                         # Fallback if tokenizer_config is also not accepted (unlikely for newer mlx_lm)
+                         logger.warning(f"TypeError during Plamo load: {e}. Attempting fallback.")
+                         self.llm_model, self.llm_tokenizer = load(path_or_hf_repo=self.model_path)
+                    except Exception as e:
+                         logger.warning(f"Failed to apply Plamo config customization: {e}. Falling back to standard load.")
+                         self.llm_model, self.llm_tokenizer = load(
+                            path_or_hf_repo=self.model_path,
+                            tokenizer_config={"trust_remote_code": True}
+                        )
+                else:
+                    use_trust_remote_code = self.trust_remote_code
+                    tokenizer_conf = {"trust_remote_code": True} if use_trust_remote_code else {}
+
+                    try:
+                        self.llm_model, self.llm_tokenizer = load(
+                            path_or_hf_repo=self.model_path,
+                            tokenizer_config=tokenizer_conf
+                        )
+                    except TypeError:
+                        # Fallback
+                        logger.warning("MLX load() failed with tokenizer_config. Attempting without it...")
+                        self.llm_model, self.llm_tokenizer = load(path_or_hf_repo=self.model_path)
                 self.model_type = 'mlx'
                 
                 # GPT-OSSモデルかどうかを判定
@@ -517,14 +589,29 @@ class Translation:
                 )
             
             max_tokens = self.generation_params.get('max_tokens', 4096)
-            output = generate(
-                self.llm_model,
-                self.llm_tokenizer,
-                prompt=prompt,
-                sampler=self.sampler,
-                logits_processors=self.logits_processors,
-                max_tokens=max_tokens
-            )
+            
+            if self.mlx_lock:
+                with self.mlx_lock:
+                    output = generate(
+                        self.llm_model,
+                        self.llm_tokenizer,
+                        prompt=prompt,
+                        sampler=self.sampler,
+                        logits_processors=self.logits_processors,
+                        max_tokens=max_tokens
+                    )
+                    # Wait for GPU inside lock
+                    mx.synchronize()
+            else:
+                output = generate(
+                    self.llm_model,
+                    self.llm_tokenizer,
+                    prompt=prompt,
+                    sampler=self.sampler,
+                    logits_processors=self.logits_processors,
+                    max_tokens=max_tokens
+                )
+                mx.synchronize()
             response = output.strip()
             
         elif self.model_type == 'gguf':

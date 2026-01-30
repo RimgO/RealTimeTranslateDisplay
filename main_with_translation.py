@@ -41,6 +41,8 @@ except ImportError:
 # グローバルシステムインスタンス（Web UIから停止・設定リロードするため）
 # スレッドセーフなアクセスを保証するためのロック
 import threading
+# MLXの並列実行によるGPU競合（Metal assertion failure）を防ぐためのロック
+_mlx_lock = threading.Lock()
 _system_instance = None
 _system_instance_lock = threading.Lock()
 _config_manager_instance = None
@@ -163,6 +165,23 @@ def parse_arguments():
         default="http://localhost:8000",
         help="Web UIサーバーのURL"
     )
+    parser.add_argument(
+        "--tts-enabled",
+        action="store_true",
+        default=None,
+        help="音声読み上げを有効化"
+    )
+    parser.add_argument(
+        "--no-tts",
+        action="store_false",
+        dest="tts_enabled",
+        help="音声読み上げを無効化"
+    )
+    parser.add_argument(
+        "--glossary-json",
+        type=str,
+        help="用語集のJSON文字列 (例: '{\"Hello\":\"Konichiwa\"}')"
+    )
 
     return parser.parse_args()
 
@@ -229,6 +248,10 @@ def main():
                 logger.info(f"   入力言語を上書き: {args.source_lang}")
             if args.target_lang:
                 logger.info(f"   出力言語を上書き: {args.target_lang}")
+
+        if args.tts_enabled is not None:
+            config.set_tts_enabled(args.tts_enabled)
+            logger.info(f"   TTS有効化を上書き: {'有効' if args.tts_enabled else '無効'}")
         
         # =====================================
         # 設定の表示
@@ -333,11 +356,13 @@ def main():
             config,  # ConfigManagerを渡す
             config.language,
             debug=debug_mode,
-            web_ui=web_ui  # Web UIブリッジを渡す
+            web_ui=web_ui,  # Web UIブリッジを渡す
+            mlx_lock=_mlx_lock  # MLX競合防止用ロック
         )
         # TTS初期化（オプショナル）
         tts = None
-        if TTS_AVAILABLE and config.tts.enabled:
+        # Web UI連携時は後からトグルできるように、設定が無効でもインスタンスだけは作成しておく
+        if TTS_AVAILABLE and (config.tts.enabled or args.web_ui):
             try:
                 tts = TextToSpeech(
                     config.tts,
@@ -348,15 +373,22 @@ def main():
                 logger.warning(f" TTS initialization failed: {e}")
                 tts = None
 
-        translation = Translation(
-            translation_queue,
-            config,  # ConfigManagerを渡す
-            config.language,
-            debug=debug_mode,
-            tts=tts,  # TTSモジュールを渡す
-            web_ui=web_ui  # Web UIブリッジを渡す
-        )
-        
+        try:
+            translation = Translation(
+                translation_queue,
+                config,  # ConfigManagerを渡す
+                config.language,
+                debug=debug_mode,
+                tts=tts,  # TTSモジュールを渡す
+                web_ui=web_ui,  # Web UIブリッジを渡す
+                mlx_lock=_mlx_lock  # MLX競合防止用ロック
+            )
+        except Exception as e:
+            logger.error(f"Translation initialization failed: {e}")
+            if web_ui:
+                web_ui.send_status("stopped", f"Model Error: {str(e)}")
+            raise e
+
         # =====================================
         # システムの起動
         # =====================================
@@ -375,10 +407,14 @@ def main():
     except FileNotFoundError as e:
         logger.error("")
         logger.error(f"エラー: {e}")
+        if 'web_ui' in locals() and web_ui:
+            web_ui.send_status("stopped", f"File Error: {str(e)}")
         sys.exit(1)
     except Exception as e:
         logger.error("")
         logger.error(f"予期しないエラーが発生しました: {e}")
+        if 'web_ui' in locals() and web_ui:
+             web_ui.send_status("stopped", f"System Error: {str(e)}")
         if args.debug:
             import traceback
             traceback.print_exc()

@@ -8,6 +8,11 @@ YAMLファイルから設定を読み込み、プラットフォーム依存の�
 import sys
 import os
 import yaml
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
+
 import pyaudio
 import numpy as np
 import shutil
@@ -212,7 +217,8 @@ class ConfigManager:
         self._output = None
         self._language = None
         self._resources = None
-    
+        self._tts = None
+
     @staticmethod
     def _detect_platform() -> str:
         """プラットフォームを検出"""
@@ -493,8 +499,12 @@ class ConfigManager:
                 max_retries=api_data.get('max_retries', 3)
             )
 
-        # trust_remote_code 設定を取得（デフォルト: False）
+        # trust_remote_code 設定を取得（デフォルト: False、PlamoなどはTrueが必要）
         trust_remote_code = model_config.get('trust_remote_code', False)
+        # Plamoモデルなどはコード実行が必須なため、モデルパスに含まれる場合はTrueを強制または推奨
+        model_path = platform_config.get('model_path', '')
+        if model_path and 'plamo' in model_path.lower():
+            trust_remote_code = True
 
         return ModelConfig(
             model_path=platform_config.get('model_path'),
@@ -662,6 +672,23 @@ class ConfigManager:
             self._config['models'][model_type][self.platform] = {}
 
         self._config['models'][model_type][self.platform]['model_path'] = model_path
+
+    def set_tts_enabled(self, enabled: bool) -> None:
+        """
+        TTS有効化を設定
+
+        Args:
+            enabled: TTS有効フラグ
+        """
+        if 'tts' not in self._config:
+            self._config['tts'] = {}
+        self._config['tts']['enabled'] = enabled
+        # キャッシュを更新（既存のインスタンスが参照している場合を考慮）
+        if self._tts:
+            self._tts.enabled = enabled
+        # キャッシュを無効化（次回取得時に再生成されるようにもする）
+        # self._tts = None # 今回は参照保持のためNoneにしないか、enabledプロパティを持つ別オブジェクトにするか。
+        # dataclassなので参照を書き換えれば伝わる。
 
     def set_debug(self, enabled: bool) -> None:
         """

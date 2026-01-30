@@ -12,6 +12,7 @@ from utils.logger import setup_logger
 
 if sys.platform == 'darwin':
     import mlx_whisper
+    import mlx.core as mx
 else:
     import whisper
 
@@ -21,9 +22,12 @@ from utils.audio_normalization import normalize_audio
 # Setup logger
 logger = setup_logger(__name__)
 
+from contextlib import nullcontext
+
 class SpeechRecognition:
     def __init__(self, audio_config, processing_queue, translation_queue,
-                 config_manager, lang_config, debug=False, web_ui=None):
+                 config_manager, lang_config, debug=False, web_ui=None, mlx_lock=None):
+        self.mlx_lock = mlx_lock
         self.config = audio_config
         self.processing_queue = processing_queue
         self.translation_queue = translation_queue
@@ -82,11 +86,26 @@ class SpeechRecognition:
                 
                 try:
                     if sys.platform == 'darwin':
-                        result = mlx_whisper.transcribe(
-                            normalized_audio,
-                            language=self.lang_config.source,
-                            path_or_hf_repo=self.model_path
-                        )
+                        # Ensure MLX lock is used if available to prevent Metal thread conflict
+                        lock = self.mlx_lock if self.mlx_lock else nullcontext() # fallback dummy context if no lock
+                        
+                        # Use the lock if it's a real lock, otherwise just run
+                        if self.mlx_lock:
+                            with self.mlx_lock:
+                                result = mlx_whisper.transcribe(
+                                    normalized_audio,
+                                    language=self.lang_config.source,
+                                    path_or_hf_repo=self.model_path
+                                )
+                                # Wait for GPU to finish before releasing lock
+                                mx.synchronize()
+                        else:
+                             result = mlx_whisper.transcribe(
+                                normalized_audio,
+                                language=self.lang_config.source,
+                                path_or_hf_repo=self.model_path
+                            )
+                             mx.synchronize()
                     else:
                         result = self.model.transcribe(
                             normalized_audio,

@@ -126,16 +126,27 @@ class AudioCapture:
             info = p.get_device_info_by_index(i)
             device_name = info["name"].lower()
             
-            # 仮想オーディオデバイスを自動検出
+            # 仮想オーディオデバイスや標準マイクを自動検出
             if any(keyword in device_name for keyword in [
                 "blackhole",
                 "stereo mix",
                 "ステレオ ミキサー",
-                "soundflower"
-            ]):
+                "soundflower",
+                "mic",
+                "マイク",
+                "builtin",
+                "内蔵"
+            ]) and info["maxInputChannels"] > 0:
                 p.terminate()
                 return i
         
+        # 見つからない場合は最初の入力デバイス
+        for i in range(p.get_device_count()):
+            info = p.get_device_info_by_index(i)
+            if info["maxInputChannels"] > 0:
+                p.terminate()
+                return i
+
         p.terminate()
         return None
 

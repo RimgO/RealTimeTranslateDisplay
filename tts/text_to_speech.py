@@ -186,6 +186,15 @@ class TextToSpeech:
                 if text is None:  # 終了シグナル
                     break
 
+                # 再生直前にもチェック（キューに入った後に無効化された場合に対応）
+                if not self.config.enabled:
+                    if self.debug:
+                        logger.info(f"Skipping TTS for '{text[:20]}...' because TTS is disabled")
+                    continue
+
+                if self.debug:
+                    logger.info(f"Processing TTS for '{text[:20]}...' (enabled={self.config.enabled})")
+
                 # テキストを読み上げ
                 try:
                     loop.run_until_complete(self._synthesize_and_play(text))
