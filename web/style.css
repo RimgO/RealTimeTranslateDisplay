@@ -192,8 +192,15 @@ h1 {
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
 
 .hamburger-btn {
@@ -364,6 +371,7 @@ button:disabled {
         opacity: 0;
         transform: translateX(-10px);
     }
+
     to {
         opacity: 1;
         transform: translateX(0);
@@ -445,10 +453,23 @@ button:disabled {
     width: 100%;
 }
 
-.checkbox-wrapper {
+.checkbox-wrapper,
+.radio-wrapper {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.radio-wrapper label {
+    margin-bottom: 0 !important;
+    cursor: pointer;
+    font-weight: 500 !important;
+}
+
+.radio-wrapper input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
 }
 
 .settings-section {

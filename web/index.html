@@ -133,10 +133,9 @@
             <!-- ⚡ REALTIME SETTINGS SECTION -->
             <div id="realtimeSettingsSection"
                 style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border-left: 4px solid #4caf50; border-radius: 8px;">
-                <div class="settings-group" style="margin-bottom: 15px; cursor: pointer;"
-                    onclick="toggleSection('realtimeContent', 'realtimeToggle')">
-                    <label style="font-size: 1rem; color: #2e7d32; font-weight: 600; user-select: none;">
-                        <span id="realtimeToggle">▼</span> ⚡ Realtime Settings
+                <div class="settings-group" style="margin-bottom: 15px;">
+                    <label style="font-size: 1.1rem; color: #2e7d32; font-weight: 700; user-select: none;">
+                        ⚡ Realtime Settings
                     </label>
                     <p style="font-size: 0.85rem; color: #558b2f; margin-top: 5px;">Changes apply instantly without
                         restart</p>
@@ -245,10 +244,9 @@
             <!-- ⚠️ RESTART REQUIRED SETTINGS SECTION -->
             <div id="restartRequiredSection"
                 style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-left: 4px solid #ff9800; border-radius: 8px;">
-                <div class="settings-group" style="margin-bottom: 15px; cursor: pointer;"
-                    onclick="toggleSection('restartContent', 'restartToggle')">
-                    <label style="font-size: 1rem; color: #e65100; font-weight: 600; user-select: none;">
-                        <span id="restartToggle">▼</span> ⚠️ Restart Required Settings
+                <div class="settings-group" style="margin-bottom: 15px;">
+                    <label style="font-size: 1.1rem; color: #e65100; font-weight: 700; user-select: none;">
+                        ⚠️ Restart Required Settings
                     </label>
                     <p style="font-size: 0.85rem; color: #ef6c00; margin-top: 5px;">Changes take effect after restarting
                         recognition</p>
@@ -343,21 +341,36 @@
                                 configuration</p>
                         </div>
 
-                        <!-- Translation Model -->
+                        <!-- Translation Engine Selection -->
                         <div class="settings-group" style="margin-top: 15px;">
-                            <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Translation Model
+                            <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Translation Engine
                             </h4>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Choose either local model or
-                                external API server (mutually exclusive)</p>
+                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Choose the translation engine
+                                (Local/API/Google)</p>
                         </div>
 
                         <div class="settings-group">
-                            <div class="checkbox-wrapper">
-                                <input type="checkbox" id="apiEnabled">
-                                <label for="apiEnabled">Use External API Server (LM Studio/Ollama/vLLM)</label>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div class="radio-wrapper">
+                                    <input type="radio" name="transEngine" id="engineLocal" value="local" checked>
+                                    <label for="engineLocal">Local Model (MLX/Transformers)</label>
+                                </div>
+                                <div class="radio-wrapper">
+                                    <input type="radio" name="transEngine" id="engineGguf" value="gguf">
+                                    <label for="engineGguf">Local Model (GGUF via llama-cpp)</label>
+                                </div>
+                                <div class="radio-wrapper">
+                                    <input type="radio" name="transEngine" id="engineApi" value="api">
+                                    <label for="engineApi">External API Server (LM Studio/Ollama)</label>
+                                </div>
+                                <div class="radio-wrapper">
+                                    <input type="radio" name="transEngine" id="engineGoogle" value="google">
+                                    <label for="engineGoogle">Google Cloud Translation API</label>
+                                </div>
                             </div>
                         </div>
 
+                        <!-- Local Model (MLX/Transformers) Settings -->
                         <div id="localModelSettings" class="settings-section">
                             <div class="settings-group">
                                 <label for="translationModelPath">Local Translation Model Path:</label>
@@ -374,6 +387,31 @@
                             </div>
                         </div>
 
+                        <!-- GGUF Settings -->
+                        <div id="ggufSettings" class="settings-section hidden">
+                            <div class="settings-group">
+                                <label for="ggufModelPath">GGUF Repo ID / Local Path:</label>
+                                <input type="text" id="ggufModelPath" value="unsloth/gpt-oss-20b-GGUF"
+                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace;">
+                            </div>
+                            <div class="settings-group">
+                                <label for="ggufModelFile">GGUF Filename:</label>
+                                <input type="text" id="ggufModelFile" value="gpt-oss-20b-Q4_K_M.gguf"
+                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace;">
+                            </div>
+                            <div class="settings-group" style="display: flex; gap: 10px;">
+                                <div style="flex: 1;">
+                                    <label for="ggufGpuLayers">GPU Layers:</label>
+                                    <input type="number" id="ggufGpuLayers" value="-1" style="width: 100%;">
+                                </div>
+                                <div style="flex: 1;">
+                                    <label for="ggufThreads">Threads:</label>
+                                    <input type="number" id="ggufThreads" value="8" style="width: 100%;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- API Server Settings -->
                         <div id="apiServerSettings" class="settings-section hidden">
                             <div class="settings-group">
                                 <label for="apiBaseUrl">API Base URL:</label>
@@ -389,6 +427,17 @@
                                     style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
                                 <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Model name configured in API
                                     server</p>
+                            </div>
+                        </div>
+
+                        <!-- Google Translate Settings -->
+                        <div id="googleTranslateSettings" class="settings-section hidden">
+                            <div class="settings-group">
+                                <label for="googleApiKey">Google Translate API Key:</label>
+                                <input type="password" id="googleApiKey" value="" placeholder="Enter API Key here..."
+                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                                <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Requires Google Cloud
+                                    Translation API Key in .env</p>
                             </div>
                         </div>
 

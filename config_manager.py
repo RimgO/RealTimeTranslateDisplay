@@ -79,12 +79,20 @@ class APIConfig:
 
 
 @dataclass
+class GoogleTranslateConfig:
+    """Google Cloud Translation API設定データクラス"""
+    enabled: bool = False
+    api_key: str = ""
+
+
+@dataclass
 class ModelConfig:
     """モデル設定データクラス"""
     model_path: str
     model_size: Optional[str] = None
     gguf: GGUFConfig = None
     api: APIConfig = None
+    google: GoogleTranslateConfig = None
     trust_remote_code: bool = False  # セキュリティ: 任意コード実行の制御
 
 
@@ -302,6 +310,8 @@ class ConfigManager:
             'TRANSLATION_BATCH_SIZE': ('translation', 'batch_size'),
             'OUTPUT_DIR': ('output', 'directory'),
             'DEBUG': ('debug', 'enabled'),
+            'GOOGLE_TRANSLATE_API_KEY': ('models', 'translation', 'google', 'api_key'),
+            'GOOGLE_TRANSLATE_ENABLED': ('models', 'translation', 'google', 'enabled'),
         }
         
         for env_var, config_path in env_mappings.items():
@@ -310,7 +320,7 @@ class ConfigManager:
                 # 型変換
                 if env_var in ['AUDIO_SAMPLE_RATE', 'AUDIO_CHANNELS', 'TRANSLATION_BATCH_SIZE']:
                     value = int(value)
-                elif env_var == 'DEBUG':
+                elif env_var in ['DEBUG', 'GOOGLE_TRANSLATE_ENABLED']:
                     value = value.lower() in ('true', '1', 'yes')
                 
                 self._set_nested_value(config_path, value)
@@ -499,6 +509,15 @@ class ConfigManager:
                 max_retries=api_data.get('max_retries', 3)
             )
 
+        # Google Translate設定を取得
+        google_config = GoogleTranslateConfig()
+        if 'google' in model_config:
+            google_data = model_config['google']
+            google_config = GoogleTranslateConfig(
+                enabled=google_data.get('enabled', False),
+                api_key=google_data.get('api_key', '')
+            )
+
         # trust_remote_code 設定を取得（デフォルト: False、PlamoなどはTrueが必要）
         trust_remote_code = model_config.get('trust_remote_code', False)
         # Plamoモデルなどはコード実行が必須なため、モデルパスに含まれる場合はTrueを強制または推奨
@@ -511,6 +530,7 @@ class ConfigManager:
             model_size=platform_config.get('model_size'),
             gguf=gguf_config,
             api=api_config,
+            google=google_config,
             trust_remote_code=trust_remote_code
         )
     

@@ -170,24 +170,62 @@ function populateAdvancedSettings(config) {
         }
     }
 
-    // API Settings
-    if (config.models && config.models.translation && config.models.translation.api) {
-        const apiConfig = config.models.translation.api;
-        document.getElementById('apiEnabled').checked = apiConfig.enabled || false;
+    // Translation Engine Settings
+    if (config.models && config.models.translation) {
+        const transConfig = config.models.translation;
+        const apiConfig = transConfig.api || {};
+        const googleConfig = transConfig.google || {};
+        const ggufConfig = transConfig.gguf || {};
+
+        const engineLocal = document.getElementById('engineLocal');
+        const engineGguf = document.getElementById('engineGguf');
+        const engineApi = document.getElementById('engineApi');
+        const engineGoogle = document.getElementById('engineGoogle');
+
+        const localModelSettings = document.getElementById('localModelSettings');
+        const ggufSettings = document.getElementById('ggufSettings');
+        const apiServerSettings = document.getElementById('apiServerSettings');
+        const googleTranslateSettings = document.getElementById('googleTranslateSettings');
+
+        // Reset visibility
+        localModelSettings.classList.add('hidden');
+        ggufSettings.classList.add('hidden');
+        apiServerSettings.classList.add('hidden');
+        googleTranslateSettings.classList.add('hidden');
+
+        if (apiConfig.enabled) {
+            if (engineApi) engineApi.checked = true;
+            apiServerSettings.classList.remove('hidden');
+        } else if (googleConfig.enabled) {
+            if (engineGoogle) engineGoogle.checked = true;
+            googleTranslateSettings.classList.remove('hidden');
+        } else if (ggufConfig.enabled) {
+            if (engineGguf) engineGguf.checked = true;
+            ggufSettings.classList.remove('hidden');
+        } else {
+            if (engineLocal) engineLocal.checked = true;
+            localModelSettings.classList.remove('hidden');
+        }
+
+        // --- Populate values from config ---
+
+        // Populate API settings
         document.getElementById('apiBaseUrl').value = apiConfig.base_url || 'http://localhost:1234/v1';
         document.getElementById('apiModel').value = apiConfig.model || 'local-model';
 
-        // Toggle between local model and API server settings
-        const apiServerSettings = document.getElementById('apiServerSettings');
-        const localModelSettings = document.getElementById('localModelSettings');
-
-        if (apiConfig.enabled) {
-            apiServerSettings.classList.remove('hidden');
-            localModelSettings.classList.add('hidden');
-        } else {
-            apiServerSettings.classList.add('hidden');
-            localModelSettings.classList.remove('hidden');
+        // Populate Google settings (優先的に config/env から取得)
+        const googleApiKeyInput = document.getElementById('googleApiKey');
+        if (googleConfig.api_key) {
+            googleApiKeyInput.value = googleConfig.api_key;
+            // .env や config.yaml に値がある場合は、プレースホルダーなどで状況を伝える
+            googleApiKeyInput.placeholder = "Loaded from .env / config";
         }
+
+        // Populate GGUF settings
+        document.getElementById('ggufModelPath').value = ggufConfig.model_path || 'unsloth/gpt-oss-20b-GGUF';
+        document.getElementById('ggufModelFile').value = ggufConfig.model_file || 'gpt-oss-20b-Q4_K_M.gguf';
+        document.getElementById('ggufGpuLayers').value = ggufConfig.n_gpu_layers !== undefined ? ggufConfig.n_gpu_layers : -1;
+        document.getElementById('ggufThreads').value = ggufConfig.n_threads || 8;
     }
 
     // Audio Detection Settings
@@ -278,24 +316,33 @@ export function setupAdvancedSettings() {
     // Setup mode-dependent UI
     setupModeDependentUI();
 
-    // API enabled checkbox toggle (exclusive with local model)
-    const apiEnabledCheckbox = document.getElementById('apiEnabled');
-    if (apiEnabledCheckbox) {
-        apiEnabledCheckbox.addEventListener('change', (e) => {
-            const apiServerSettings = document.getElementById('apiServerSettings');
+    // Translation Engine radio toggle
+    const engineRadios = document.getElementsByName('transEngine');
+    engineRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
             const localModelSettings = document.getElementById('localModelSettings');
+            const ggufSettings = document.getElementById('ggufSettings');
+            const apiServerSettings = document.getElementById('apiServerSettings');
+            const googleTranslateSettings = document.getElementById('googleTranslateSettings');
 
-            if (e.target.checked) {
-                // Show API settings, hide local model settings
-                apiServerSettings.classList.remove('hidden');
-                localModelSettings.classList.add('hidden');
-            } else {
-                // Show local model settings, hide API settings
-                apiServerSettings.classList.add('hidden');
+            // Hide all first
+            localModelSettings.classList.add('hidden');
+            ggufSettings.classList.add('hidden');
+            apiServerSettings.classList.add('hidden');
+            googleTranslateSettings.classList.add('hidden');
+
+            // Show selected
+            if (e.target.value === 'local') {
                 localModelSettings.classList.remove('hidden');
+            } else if (e.target.value === 'gguf') {
+                ggufSettings.classList.remove('hidden');
+            } else if (e.target.value === 'api') {
+                apiServerSettings.classList.remove('hidden');
+            } else if (e.target.value === 'google') {
+                googleTranslateSettings.classList.remove('hidden');
             }
         });
-    }
+    });
 
     // Range input value display updates
     const silenceThresholdInput = document.getElementById('silenceThreshold');
@@ -443,10 +490,23 @@ async function saveAdvancedSettings() {
         // Model Settings - only save the visible ASR field based on platform
         'models.translation.darwin.model_path': document.getElementById('translationModelPath').value,
 
+        // Engine Selection logic
+        'models.translation.api.enabled': document.querySelector('input[name="transEngine"]:checked').value === 'api',
+        'models.translation.google.enabled': document.querySelector('input[name="transEngine"]:checked').value === 'google',
+        'models.translation.gguf.enabled': document.querySelector('input[name="transEngine"]:checked').value === 'gguf',
+
         // API Settings
-        'models.translation.api.enabled': document.getElementById('apiEnabled').checked,
         'models.translation.api.base_url': document.getElementById('apiBaseUrl').value,
         'models.translation.api.model': document.getElementById('apiModel').value,
+
+        // Google Settings
+        'models.translation.google.api_key': document.getElementById('googleApiKey').value,
+
+        // GGUF Settings
+        'models.translation.gguf.model_path': document.getElementById('ggufModelPath').value,
+        'models.translation.gguf.model_file': document.getElementById('ggufModelFile').value,
+        'models.translation.gguf.n_gpu_layers': parseInt(document.getElementById('ggufGpuLayers').value),
+        'models.translation.gguf.n_threads': parseInt(document.getElementById('ggufThreads').value),
 
         // Audio Device Settings (input device only - output is realtime)
         'audio.input_device': document.getElementById('inputDevice').value || null,

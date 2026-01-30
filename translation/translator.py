@@ -49,6 +49,14 @@ except ImportError:
     OPENAI_AVAILABLE = False
     logger.info("INFO: openai package not available. API server mode will not be supported.")
 
+# Google Cloud Translationのサポート
+try:
+    from google.cloud import translate_v2 as translate
+    GOOGLE_AVAILABLE = True
+except ImportError:
+    GOOGLE_AVAILABLE = False
+    logger.info("INFO: google-cloud-translate package not available. Google Translate mode will not be supported.")
+
 
 class Translation:
     """
@@ -112,6 +120,11 @@ class Translation:
             self.api_timeout = api_config.timeout
             self.api_max_retries = api_config.max_retries
 
+            # Google Translate設定の取得
+            google_config = model_config.google
+            self.use_google = google_config.enabled
+            self.google_api_key = google_config.api_key
+
             # GGUF設定の取得
             gguf_config = model_config.gguf
             self.use_gguf = gguf_config.enabled
@@ -135,9 +148,10 @@ class Translation:
             # セキュリティ設定: trust_remote_code（デフォルト: False）
             self.trust_remote_code = getattr(config_manager, 'trust_remote_code', False)
 
-            # デフォルトではAPI・GGUFを無効化
+            # デフォルトではAPI・GGUF・Googleを無効化
             self.use_api = False
             self.use_gguf = False
+            self.use_google = False
 
         # 状態管理
         self.consecutive_errors = 0
@@ -151,7 +165,8 @@ class Translation:
         self.llm_model = None
         self.llm_tokenizer = None
         self.api_client = None  # OpenAI APIクライアント
-        self.model_type = None  # 'transformers', 'mlx', 'gguf', 'api'のいずれか
+        self.google_client = None  # Google Translateクライアント
+        self.model_type = None  # 'transformers', 'mlx', 'gguf', 'api', 'google'のいずれか
         self.is_gpt_oss = False  # GPT-OSSモデルかどうか
         
         # 用語集
@@ -285,6 +300,9 @@ class Translation:
             if hasattr(self, 'api_client') and self.api_client is not None:
                 del self.api_client
                 self.api_client = None
+            if hasattr(self, 'google_client') and self.google_client is not None:
+                del self.google_client
+                self.google_client = None
 
             # ガベージコレクションを強制実行してメモリを確実に解放
             import gc
@@ -314,6 +332,28 @@ class Translation:
                 self.is_gpt_oss = False  # APIモードではGPT-OSSパース不要
 
                 logger.info("APIクライアントの初期化完了")
+                return
+
+            # Google Translateを使用する場合
+            if self.use_google:
+                if not GOOGLE_AVAILABLE:
+                    raise ImportError(
+                        "google-cloud-translate package is required for Google mode. "
+                        "Install it with: pip install google-cloud-translate"
+                    )
+
+                logger.info("Google Translateに接続中")
+                if not self.google_api_key:
+                    logger.warning("Google API Keyが設定されていません。環境変数をご確認ください。")
+
+                # Google Cloud Translation V2クライアントの初期化
+                self.google_client = translate.Client(api_key=self.google_api_key)
+                self.llm_model = None
+                self.llm_tokenizer = None
+                self.model_type = 'google'
+                self.is_gpt_oss = False
+
+                logger.info("Google Translateクライアントの初期化完了")
                 return
 
             # GGUF形式のモデルを使用するかどうかを判定
@@ -580,6 +620,32 @@ class Translation:
                 # エラー時は空の応答を返す
                 response = ""
 
+        elif self.model_type == 'google':
+            # Google Translate経由で翻訳
+            try:
+                # 言語コードの変換（必要に応じて）
+                # google-cloud-translate expects ISO 639-1
+                target_lang = self.lang_config.target
+                source_lang = self.lang_config.source
+
+                result = self.google_client.translate(
+                    text,
+                    target_language=target_lang,
+                    source_language=source_lang
+                )
+                response = result['translatedText']
+                
+                # HTMLエンティティのデコード（Google Translate V2はHTMLエンティティを返すことがある）
+                import html
+                response = html.unescape(response)
+
+                if self.debug:
+                    logger.info(f"[Google] Response: {response[:200]}...")
+
+            except Exception as e:
+                logger.info(f"Google Translate呼び出しエラー: {e}")
+                response = ""
+
         elif self.model_type == 'mlx':
             # macOS: MLXで推論
             # チャットテンプレートの適用
@@ -689,8 +755,8 @@ class Translation:
 
     def check_model_reload(self):
         """定期的なモデル再ロードのチェック"""
-        # APIモードでは再ロード不要
-        if self.model_type == 'api':
+        # API/Googleモードでは再ロード不要
+        if self.model_type in ['api', 'google']:
             return
 
         current_time = time.time()
