@@ -110,12 +110,15 @@ class AudioProcessing:
 
                 # 条件2: 最小バッファ長を超え、かつ十分なポーズがある
                 elif len(buffer) >= self.min_buffer_size:
-                    if pause_duration >= self.medium_pause_duration:
-                        should_segment = True
-                        segment_reason = "medium_pause"
-                    elif pause_duration >= self.long_pause_duration:
+                    if pause_duration >= self.long_pause_duration:
                         should_segment = True
                         segment_reason = "long_pause"
+                    elif pause_duration >= self.medium_pause_duration:
+                        should_segment = True
+                        segment_reason = "medium_pause"
+                    elif pause_duration >= 0.5: # 予備の短いポーズ判定
+                        should_segment = True
+                        segment_reason = "short_pause_fallback"
 
                 if should_segment:
                     # ポーズ部分を除いたデータを処理
@@ -130,8 +133,9 @@ class AudioProcessing:
                     else:
                         audio_data = np.array(buffer)
 
-                    # 音声データが十分な長さがあれば処理
-                    if len(audio_data) >= self.min_buffer_size:
+                    # 音声データが一定以上（0.5秒以上）あれば処理
+                    # whisper等は短すぎるとエラーになるため、最低限の長さを確保
+                    if len(audio_data) >= int(0.5 * self.config.sample_rate):
                         processed_audio = self.preprocess_audio(audio_data)
                         self.processing_queue.put(processed_audio)
 
@@ -141,14 +145,14 @@ class AudioProcessing:
                     silence_start = None
 
             except queue.Empty:
-                # タイムアウト時にもバッファチェック
-                if len(buffer) >= self.min_buffer_size:
+                # タイムアウト時（無音が続いている時）の強制フラッシュ
+                if len(buffer) >= int(0.5 * self.config.sample_rate):
                     current_time = time.time()
+                    # 最後の音声検知から long_pause_duration 経過していたら処理
                     if current_time - last_voice_activity >= self.long_pause_duration:
                         audio_data = np.array(buffer)
-                        if len(audio_data) > 0:
-                            processed_audio = self.preprocess_audio(audio_data)
-                            self.processing_queue.put(processed_audio)
+                        processed_audio = self.preprocess_audio(audio_data)
+                        self.processing_queue.put(processed_audio)
                         buffer.clear()
                         buffer_start_time = current_time
             except Exception as e:
@@ -178,8 +182,13 @@ class AudioProcessing:
         zero_crossings = np.sum(np.abs(np.diff(np.sign(normalized_data)))) / (2 * len(normalized_data))
         has_speech_characteristics = zero_crossings > self.zero_crossing_rate_threshold
 
-        # 両方の条件を満たす場合に音声と判定
-        return has_energy and has_speech_characteristics
+        # 判定: 
+        # 1. エネルギーがしきい値の2倍以上あれば無条件で音声（強い喚声）
+        # 2. エネルギーがしきい値以上かつ、音声らしい周波数特性（ゼロ交差率）がある
+        is_voice = (rms > self.config.voice_activity_threshold * 2) or \
+                   (has_energy and has_speech_characteristics)
+        
+        return is_voice
 
     def calculate_pause_duration(self, buffer, current_pos):
         """

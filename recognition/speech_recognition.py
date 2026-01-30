@@ -118,10 +118,16 @@ class SpeechRecognition:
                 text = result['text'].strip()
 
                 current_time = time.time()
-                if text and (text != last_text or current_time - last_text_time > 5):
+                # 判定ロジックの改善: 
+                # 1. テキストが空でない
+                # 2. 前のテキストと違う、または一定時間（1.5秒）経過している
+                # これにより、同じフレーズを繰り返した場合や、Whisperの同一結果出力を適切に処理しつつ、
+                # 反応性を向上させる。
+                if text and (text != last_text or current_time - last_text_time > 1.5):
                     # Web UIモードではstdoutに出力しない
                     if not self.web_ui:
                         self.print_with_strictly_controlled_linebreaks(text)
+                    
                     last_text = text
                     last_text_time = current_time
 
@@ -132,14 +138,16 @@ class SpeechRecognition:
                     if self.translation_queue:
                         # ペアIDと一緒に送信
                         self.translation_queue.put({'text': text, 'pair_id': pair_id})
+                    
                     # 認識結果をバッファに追加（I/O効率化）
                     self._add_to_log_buffer(text)
+                    
                     # Web UIに送信（ペアID付き）
                     if self.web_ui:
                         self.web_ui.send_recognized_text(text, self.lang_config.source, pair_id)
 
-                elif self.debug:
-                    logger.info("処理後のテキストが空か、直前の文と同じため出力をスキップします")
+                elif self.debug and not text:
+                    logger.info("認識結果が空です。")
 
             except queue.Empty:
                 if self.debug:

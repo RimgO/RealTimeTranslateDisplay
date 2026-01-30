@@ -11,10 +11,7 @@ from typing import Optional
 from datetime import datetime
 import requests
 
-# Logging
-from utils.logger import setup_logger
-
-
+from concurrent.futures import ThreadPoolExecutor
 # Setup logger
 logger = setup_logger(__name__)
 
@@ -34,6 +31,8 @@ class WebUIBridge:
         self.server_url = server_url
         self.enabled = enabled
         self.broadcast_url = f"{server_url}/api/broadcast"
+        # 非同期送信用のスレッドプール
+        self.executor = ThreadPoolExecutor(max_workers=4)
 
     def send_recognized_text(self, text: str, language: str = "en", pair_id: Optional[str] = None):
         """
@@ -115,21 +114,19 @@ class WebUIBridge:
 
     def _broadcast(self, message: dict):
         """
-        メッセージをブロードキャスト
-
-        Args:
-            message: 送信するメッセージ
+        メッセージをブロードキャスト (非同期)
         """
-        try:
-            response = requests.post(
-                self.broadcast_url,
-                json=message,
-                timeout=1.0  # タイムアウトを短く設定
-            )
-            if response.status_code != 200:
-                logger.info(f"Failed to broadcast message: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            # Web UIサーバーが起動していない場合などは無視
-            pass
-        except Exception as e:
-            logger.info(f"Error broadcasting message: {e}")
+        if not self.enabled:
+            return
+            
+        def _do_post():
+            try:
+                requests.post(self.broadcast_url, json=message, timeout=2.0)
+            except Exception:
+                pass
+
+        self.executor.submit(_do_post)
+
+    def close(self):
+        """スレッドプールの終了"""
+        self.executor.shutdown(wait=False)
