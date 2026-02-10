@@ -7,11 +7,14 @@ by sending real-time updates via WebSocket.
 
 import asyncio
 import json
-from typing import Optional
+from typing import Optional, List, Dict
 from datetime import datetime
 import requests
-
 from concurrent.futures import ThreadPoolExecutor
+
+# Logging
+from utils.logger import setup_logger
+
 # Setup logger
 logger = setup_logger(__name__)
 
@@ -33,6 +36,10 @@ class WebUIBridge:
         self.broadcast_url = f"{server_url}/api/broadcast"
         # 非同期送信用のスレッドプール
         self.executor = ThreadPoolExecutor(max_workers=4)
+        # デバッグ用ログファイル
+        self.debug_log = "/Users/rimgo/RealtimeTranslateDisplay/bridge_debug.log"
+        with open(self.debug_log, "a") as f:
+            f.write(f"\n--- Bridge started at {datetime.now()} ---\n")
 
     def send_recognized_text(self, text: str, language: str = "en", pair_id: Optional[str] = None):
         """
@@ -74,6 +81,33 @@ class WebUIBridge:
             "pair_id": pair_id or datetime.now().isoformat(),
             "timestamp": datetime.now().isoformat()
         }
+        self._broadcast(message)
+
+    def send_keywords(self, keywords: list, articles: list, images: list, pair_id: Optional[str] = None):
+        """
+        抽出されたキーワードと検索結果を送信
+
+        Args:
+            keywords: キーワードリスト
+            articles: 記事リスト
+            images: 画像リスト
+            pair_id: ペアID
+        """
+        if not self.enabled:
+            return
+
+        with open(self.debug_log, "a") as f:
+            f.write(f"{datetime.now()} [KEYWORDS] count={len(keywords)} results={len(articles)}/{len(images)}\n")
+
+        message = {
+            "type": "keywords",
+            "keywords": keywords,
+            "articles": articles,
+            "images": images,
+            "pair_id": pair_id or datetime.now().isoformat(),
+            "timestamp": datetime.now().isoformat()
+        }
+        logger.info(f"Bridge sending keywords: {keywords}")
         self._broadcast(message)
 
     def send_status(self, status: str, message: str):
@@ -121,9 +155,15 @@ class WebUIBridge:
             
         def _do_post():
             try:
-                requests.post(self.broadcast_url, json=message, timeout=2.0)
-            except Exception:
-                pass
+                resp = requests.post(self.broadcast_url, json=message, timeout=2.0)
+                with open(self.debug_log, "a") as f:
+                    f.write(f"{datetime.now()} [BROADCAST] type={message.get('type')} status={resp.status_code}\n")
+                if resp.status_code != 200:
+                    logger.warning(f"Web UI broadcast failed: HTTP {resp.status_code}")
+            except Exception as e:
+                with open(self.debug_log, "a") as f:
+                    f.write(f"{datetime.now()} [BROADCAST ERROR] {e}\n")
+                logger.error(f"Web UI broadcast error: {e}")
 
         self.executor.submit(_do_post)
 

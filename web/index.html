@@ -100,376 +100,388 @@
                     Waiting for recognition to start...
                 </p>
             </div>
+
+            <!-- Search Results Panel -->
+            <aside class="search-panel" id="searchDisplay">
+                <div class="search-header">
+                    <h3>🔍 Related Information</h3>
+                    <button class="clear-search-btn" id="clearSearchBtn" title="Clear Results">🗑️</button>
+                </div>
+                <div id="searchResults" class="search-results-list">
+                    <p class="search-placeholder">Keywords and related info will appear here.</p>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel">
+        <div class="settings-header">
+            <h2>⚙ Settings</h2>
+            <button class="close-btn" id="closeSettingsBtn">✕</button>
         </div>
 
-        <div class="settings-panel" id="settingsPanel">
-            <div class="settings-header">
-                <h2>⚙ Settings</h2>
-                <button class="close-btn" id="closeSettingsBtn">✕</button>
+        <!-- Hidden fields for backend compatibility (controlled by header) -->
+        <input type="hidden" id="mode" value="translation">
+        <select id="sourceLang" style="display: none;">
+            <option value="en">English</option>
+            <option value="ja">Japanese</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="zh">Chinese</option>
+            <option value="ko">Korean</option>
+        </select>
+        <select id="targetLang" style="display: none;">
+            <option value="ja">Japanese</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="zh">Chinese</option>
+            <option value="ko">Korean</option>
+        </select>
+        <input type="checkbox" id="ttsEnabled" checked style="display: none;">
+
+        <!-- ⚡ REALTIME SETTINGS SECTION -->
+        <div id="realtimeSettingsSection"
+            style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border-left: 4px solid #4caf50; border-radius: 8px;">
+            <div class="settings-group" style="margin-bottom: 15px;">
+                <label style="font-size: 1.1rem; color: #2e7d32; font-weight: 700; user-select: none;">
+                    ⚡ Realtime Settings
+                </label>
+                <p style="font-size: 0.85rem; color: #558b2f; margin-top: 5px;">Changes apply instantly without
+                    restart</p>
             </div>
+            <div id="realtimeContent">
 
-            <!-- Hidden fields for backend compatibility (controlled by header) -->
-            <input type="hidden" id="mode" value="translation">
-            <select id="sourceLang" style="display: none;">
-                <option value="en">English</option>
-                <option value="ja">Japanese</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="zh">Chinese</option>
-                <option value="ko">Korean</option>
-            </select>
-            <select id="targetLang" style="display: none;">
-                <option value="ja">Japanese</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="zh">Chinese</option>
-                <option value="ko">Korean</option>
-            </select>
-            <input type="checkbox" id="ttsEnabled" checked style="display: none;">
-
-            <!-- ⚡ REALTIME SETTINGS SECTION -->
-            <div id="realtimeSettingsSection"
-                style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border-left: 4px solid #4caf50; border-radius: 8px;">
-                <div class="settings-group" style="margin-bottom: 15px;">
-                    <label style="font-size: 1.1rem; color: #2e7d32; font-weight: 700; user-select: none;">
-                        ⚡ Realtime Settings
-                    </label>
-                    <p style="font-size: 0.85rem; color: #558b2f; margin-top: 5px;">Changes apply instantly without
-                        restart</p>
-                </div>
-                <div id="realtimeContent">
-
-                    <!-- Translation Realtime Settings (Translation mode only) -->
-                    <div id="translationRealtimeSection" class="settings-section" style="margin-top: 20px;">
-                        <div class="settings-group" style="margin-bottom: 15px;">
-                            <label style="font-size: 1rem; color: #4caf50; font-weight: 600;">🌐 Translation Realtime
-                                Settings</label>
-                            <p style="font-size: 0.85rem; color: #666; margin-top: 5px;">TTS output and translation
-                                parameters</p>
-                        </div>
-
-                        <!-- TTS Settings -->
-                        <div class="settings-group" style="margin-top: 15px;">
-                            <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Text-to-Speech
-                                (TTS)</h4>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Speech output device and voice
-                                parameters</p>
-                        </div>
-
-                        <div class="settings-group">
-                            <label for="outputDevice">Output Device (TTS Speaker):</label>
-                            <select id="outputDevice"
-                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-                                <option value="">Default (System Speaker)</option>
-                            </select>
-                            <button id="refreshOutputDevices"
-                                style="margin-top: 8px; padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">
-                                🔄 Refresh Devices
-                            </button>
-                            <span id="outputDeviceFeedback"
-                                style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
-                                Applied</span>
-                        </div>
-
-                        <div class="settings-group">
-                            <label for="ttsRate">TTS Speech Rate:</label>
-                            <select id="ttsRate">
-                                <option value="-50%">-50% (Very Slow)</option>
-                                <option value="-25%">-25% (Slow)</option>
-                                <option value="+0%">+0% (Normal)</option>
-                                <option value="+20%">+20% (Faster)</option>
-                                <option value="+30%" selected>+30% (Fast)</option>
-                                <option value="+50%">+50% (Very Fast)</option>
-                                <option value="+75%">+75% (Ultra Fast)</option>
-                                <option value="+100%">+100% (Maximum)</option>
-                            </select>
-                            <span id="ttsRateFeedback"
-                                style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
-                                Applied</span>
-                        </div>
-
-                        <div class="settings-group">
-                            <label for="ttsVolume">TTS Volume:</label>
-                            <select id="ttsVolume">
-                                <option value="-50%">-50% (Very Quiet)</option>
-                                <option value="-25%">-25% (Quiet)</option>
-                                <option value="+0%" selected>+0% (Normal)</option>
-                                <option value="+25%">+25% (Louder)</option>
-                                <option value="+50%">+50% (Very Loud)</option>
-                            </select>
-                            <span id="ttsVolumeFeedback"
-                                style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
-                                Applied</span>
-                        </div>
-
-                        <div class="settings-group">
-                            <label for="ttsPitch">TTS Pitch:</label>
-                            <select id="ttsPitch">
-                                <option value="-50Hz">-50Hz (Very Low)</option>
-                                <option value="-25Hz">-25Hz (Low)</option>
-                                <option value="+0Hz" selected>+0Hz (Normal)</option>
-                                <option value="+25Hz">+25Hz (High)</option>
-                                <option value="+50Hz">+50Hz (Very High)</option>
-                            </select>
-                            <span id="ttsPitchFeedback"
-                                style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
-                                Applied</span>
-                        </div>
-
-                        <!-- Translation Temperature -->
-                        <div class="settings-group" style="margin-top: 15px;">
-                            <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Translation
-                                Temperature</h4>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Controls translation creativity
-                                and consistency</p>
-                        </div>
-                        <div class="settings-group">
-                            <label for="temperature">Translation Temperature (creativity):</label>
-                            <input type="range" id="temperature" min="0.1" max="1.5" step="0.1" value="0.8"
-                                style="width: 100%;">
-                            <span id="temperatureValue" style="font-size: 0.9rem; color: #666;">0.8</span>
-                            <span id="temperatureFeedback"
-                                style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
-                                Applied</span>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Higher = more creative, Lower =
-                                more conservative</p>
-                        </div>
-                    </div>
-                </div> <!-- End realtimeContent -->
-            </div>
-
-            <!-- ⚠️ RESTART REQUIRED SETTINGS SECTION -->
-            <div id="restartRequiredSection"
-                style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-left: 4px solid #ff9800; border-radius: 8px;">
-                <div class="settings-group" style="margin-bottom: 15px;">
-                    <label style="font-size: 1.1rem; color: #e65100; font-weight: 700; user-select: none;">
-                        ⚠️ Restart Required Settings
-                    </label>
-                    <p style="font-size: 0.85rem; color: #ef6c00; margin-top: 5px;">Changes take effect after restarting
-                        recognition</p>
-                </div>
-                <div id="restartContent">
-
-                    <!-- 1. ASR Settings -->
-                    <div class="settings-section">
-                        <div class="settings-group" style="margin-bottom: 15px;">
-                            <label style="font-size: 1rem; color: #667eea; font-weight: 600;">📢 ASR Settings</label>
-                            <p style="font-size: 0.85rem; color: #666; margin-top: 5px;">Speech recognition model, input
-                                device, and voice detection</p>
-                        </div>
-
-                        <!-- ASR Model -->
-                        <div class="settings-group" id="asrModelPathGroup">
-                            <label for="asrModelPath">ASR Model Path (Whisper) - macOS:</label>
-                            <input type="text" id="asrModelPath" value="mlx-community/whisper-large-v3-turbo"
-                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace; font-size: 0.9rem;">
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">HuggingFace model ID or local
-                                path (MLX format)</p>
-                        </div>
-
-                        <div class="settings-group" id="asrModelSizeGroup">
-                            <label for="asrModelSize">ASR Model Size - Linux/Windows:</label>
-                            <select id="asrModelSize"
-                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-                                <option value="tiny">tiny (fastest, lower accuracy)</option>
-                                <option value="base">base (fast)</option>
-                                <option value="small">small (balanced)</option>
-                                <option value="medium">medium (good quality)</option>
-                                <option value="large">large (best quality)</option>
-                                <option value="large-v3-turbo" selected>large-v3-turbo (recommended)</option>
-                            </select>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Auto-download from Hugging Face
-                            </p>
-                        </div>
-
-                        <!-- Input Device -->
-                        <div class="settings-group">
-                            <label for="inputDevice">Input Device (Microphone):</label>
-                            <select id="inputDevice"
-                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-                                <option value="">Default (Auto-detect)</option>
-                            </select>
-                            <button id="refreshInputDevices"
-                                style="margin-top: 8px; padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">
-                                🔄 Refresh Devices
-                            </button>
-                        </div>
-
-                        <!-- Voice Detection -->
-                        <div class="settings-group" style="margin-top: 15px;">
-                            <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Voice Detection
-                            </h4>
-                        </div>
-
-                        <div class="settings-group">
-                            <label for="silenceThreshold">Silence Threshold:</label>
-                            <input type="range" id="silenceThreshold" min="0.001" max="0.05" step="0.001" value="0.005"
-                                style="width: 100%;">
-                            <span id="silenceThresholdValue" style="font-size: 0.9rem; color: #666;">0.005</span>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Audio level below this is
-                                considered silence</p>
-                        </div>
-
-                        <div class="settings-group">
-                            <label for="mediumPause">Medium Pause (sentence break):</label>
-                            <input type="range" id="mediumPause" min="0.3" max="2.0" step="0.1" value="0.8"
-                                style="width: 100%;">
-                            <span id="mediumPauseValue" style="font-size: 0.9rem; color: #666;">0.8s</span>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Pause duration indicating
-                                sentence boundary</p>
-                        </div>
-
-                        <div class="settings-group">
-                            <label for="longPause">Long Pause (end of speech):</label>
-                            <input type="range" id="longPause" min="0.5" max="3.0" step="0.1" value="1.5"
-                                style="width: 100%;">
-                            <span id="longPauseValue" style="font-size: 0.9rem; color: #666;">1.5s</span>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Pause duration indicating end of
-                                speech segment</p>
-                        </div>
+                <!-- Translation Realtime Settings (Translation mode only) -->
+                <div id="translationRealtimeSection" class="settings-section" style="margin-top: 20px;">
+                    <div class="settings-group" style="margin-bottom: 15px;">
+                        <label style="font-size: 1rem; color: #4caf50; font-weight: 600;">🌐 Translation Realtime
+                            Settings</label>
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 5px;">TTS output and translation
+                            parameters</p>
                     </div>
 
-                    <!-- 2. Translation Settings (Translation mode only) -->
-                    <div id="translationSettingsSection" class="settings-section" style="margin-top: 20px;">
-                        <div class="settings-group" style="margin-bottom: 15px;">
-                            <label style="font-size: 1rem; font-weight: 600; color: #667eea;">🌐 Translation
-                                Settings</label>
-                            <p style="font-size: 0.85rem; color: #666; margin-top: 5px;">Translation model and context
-                                configuration</p>
-                        </div>
-
-                        <!-- Translation Engine Selection -->
-                        <div class="settings-group" style="margin-top: 15px;">
-                            <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Translation Engine
-                            </h4>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Choose the translation engine
-                                (Local/API/Google)</p>
-                        </div>
-
-                        <div class="settings-group">
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <div class="radio-wrapper">
-                                    <input type="radio" name="transEngine" id="engineLocal" value="local" checked>
-                                    <label for="engineLocal">Local Model (MLX/Transformers)</label>
-                                </div>
-                                <div class="radio-wrapper">
-                                    <input type="radio" name="transEngine" id="engineGguf" value="gguf">
-                                    <label for="engineGguf">Local Model (GGUF via llama-cpp)</label>
-                                </div>
-                                <div class="radio-wrapper">
-                                    <input type="radio" name="transEngine" id="engineApi" value="api">
-                                    <label for="engineApi">External API Server (LM Studio/Ollama)</label>
-                                </div>
-                                <div class="radio-wrapper">
-                                    <input type="radio" name="transEngine" id="engineGoogle" value="google">
-                                    <label for="engineGoogle">Google Cloud Translation API</label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Local Model (MLX/Transformers) Settings -->
-                        <div id="localModelSettings" class="settings-section">
-                            <div class="settings-group">
-                                <label for="translationModelPath">Local Translation Model Path:</label>
-                                <input type="text" id="translationModelPath" value="mlx-community/gpt-oss-20b-MXFP4-Q4"
-                                    list="modelSuggestions"
-                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace; font-size: 0.9rem;">
-                                <datalist id="modelSuggestions">
-                                    <option value="mlx-community/gpt-oss-20b-MXFP4-Q4">
-                                    <option value="mlx-community/Llama-3.2-3B-Instruct-4bit">
-                                    <option value="mlx-community/plamo-2-8b">
-                                </datalist>
-                                <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">HuggingFace model ID or
-                                    local path (macOS: MLX format)</p>
-                            </div>
-                        </div>
-
-                        <!-- GGUF Settings -->
-                        <div id="ggufSettings" class="settings-section hidden">
-                            <div class="settings-group">
-                                <label for="ggufModelPath">GGUF Repo ID / Local Path:</label>
-                                <input type="text" id="ggufModelPath" value="unsloth/gpt-oss-20b-GGUF"
-                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace;">
-                            </div>
-                            <div class="settings-group">
-                                <label for="ggufModelFile">GGUF Filename:</label>
-                                <input type="text" id="ggufModelFile" value="gpt-oss-20b-Q4_K_M.gguf"
-                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace;">
-                            </div>
-                            <div class="settings-group" style="display: flex; gap: 10px;">
-                                <div style="flex: 1;">
-                                    <label for="ggufGpuLayers">GPU Layers:</label>
-                                    <input type="number" id="ggufGpuLayers" value="-1" style="width: 100%;">
-                                </div>
-                                <div style="flex: 1;">
-                                    <label for="ggufThreads">Threads:</label>
-                                    <input type="number" id="ggufThreads" value="8" style="width: 100%;">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- API Server Settings -->
-                        <div id="apiServerSettings" class="settings-section hidden">
-                            <div class="settings-group">
-                                <label for="apiBaseUrl">API Base URL:</label>
-                                <input type="text" id="apiBaseUrl" value="http://localhost:1234/v1"
-                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-                                <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">OpenAI-compatible API
-                                    endpoint</p>
-                            </div>
-
-                            <div class="settings-group">
-                                <label for="apiModel">Model Name:</label>
-                                <input type="text" id="apiModel" value="local-model"
-                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-                                <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Model name configured in API
-                                    server</p>
-                            </div>
-                        </div>
-
-                        <!-- Google Translate Settings -->
-                        <div id="googleTranslateSettings" class="settings-section hidden">
-                            <div class="settings-group">
-                                <label for="googleApiKey">Google Translate API Key:</label>
-                                <input type="password" id="googleApiKey" value="" placeholder="Enter API Key here..."
-                                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-                                <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Requires Google Cloud
-                                    Translation API Key in .env</p>
-                            </div>
-                        </div>
-
-                        <!-- Context Window Size -->
-                        <div class="settings-group" style="margin-top: 15px;">
-                            <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Context Window
-                                Size</h4>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Number of previous sentences to
-                                use for translation context</p>
-                        </div>
-                        <div class="settings-group">
-                            <label for="contextWindowSize">Context Window Size:</label>
-                            <input type="range" id="contextWindowSize" min="1" max="20" step="1" value="8"
-                                style="width: 100%;">
-                            <span id="contextWindowSizeValue" style="font-size: 0.9rem; color: #666;">8 sentences</span>
-                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Higher values provide more
-                                context but require restart to apply</p>
-                        </div>
+                    <!-- TTS Settings -->
+                    <div class="settings-group" style="margin-top: 15px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Text-to-Speech
+                            (TTS)</h4>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Speech output device and voice
+                            parameters</p>
                     </div>
 
-                    <!-- Save Settings Button -->
-                    <div class="settings-group" style="margin-top: 30px;">
-                        <button id="saveAdvancedSettings"
-                            style="width: 100%; padding: 14px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);">
-                            💾 Save & Apply on Restart
+                    <div class="settings-group">
+                        <label for="outputDevice">Output Device (TTS Speaker):</label>
+                        <select id="outputDevice"
+                            style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <option value="">Default (System Speaker)</option>
+                        </select>
+                        <button id="refreshOutputDevices"
+                            style="margin-top: 8px; padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">
+                            🔄 Refresh Devices
                         </button>
-                        <p style="font-size: 0.8rem; color: #ef6c00; text-align: center; margin-top: 8px;">⚠️ These
-                            settings require stopping and restarting recognition to take effect</p>
+                        <span id="outputDeviceFeedback"
+                            style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
+                            Applied</span>
                     </div>
-                </div> <!-- End restartContent -->
-            </div>
+
+                    <div class="settings-group">
+                        <label for="ttsRate">TTS Speech Rate:</label>
+                        <select id="ttsRate">
+                            <option value="-50%">-50% (Very Slow)</option>
+                            <option value="-25%">-25% (Slow)</option>
+                            <option value="+0%">+0% (Normal)</option>
+                            <option value="+20%">+20% (Faster)</option>
+                            <option value="+30%" selected>+30% (Fast)</option>
+                            <option value="+50%">+50% (Very Fast)</option>
+                            <option value="+75%">+75% (Ultra Fast)</option>
+                            <option value="+100%">+100% (Maximum)</option>
+                        </select>
+                        <span id="ttsRateFeedback"
+                            style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
+                            Applied</span>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="ttsVolume">TTS Volume:</label>
+                        <select id="ttsVolume">
+                            <option value="-50%">-50% (Very Quiet)</option>
+                            <option value="-25%">-25% (Quiet)</option>
+                            <option value="+0%" selected>+0% (Normal)</option>
+                            <option value="+25%">+25% (Louder)</option>
+                            <option value="+50%">+50% (Very Loud)</option>
+                        </select>
+                        <span id="ttsVolumeFeedback"
+                            style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
+                            Applied</span>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="ttsPitch">TTS Pitch:</label>
+                        <select id="ttsPitch">
+                            <option value="-50Hz">-50Hz (Very Low)</option>
+                            <option value="-25Hz">-25Hz (Low)</option>
+                            <option value="+0Hz" selected>+0Hz (Normal)</option>
+                            <option value="+25Hz">+25Hz (High)</option>
+                            <option value="+50Hz">+50Hz (Very High)</option>
+                        </select>
+                        <span id="ttsPitchFeedback"
+                            style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
+                            Applied</span>
+                    </div>
+
+                    <!-- Translation Temperature -->
+                    <div class="settings-group" style="margin-top: 15px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Translation
+                            Temperature</h4>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Controls translation creativity
+                            and consistency</p>
+                    </div>
+                    <div class="settings-group">
+                        <label for="temperature">Translation Temperature (creativity):</label>
+                        <input type="range" id="temperature" min="0.1" max="1.5" step="0.1" value="0.8"
+                            style="width: 100%;">
+                        <span id="temperatureValue" style="font-size: 0.9rem; color: #666;">0.8</span>
+                        <span id="temperatureFeedback"
+                            style="margin-left: 10px; color: #4caf50; font-size: 0.85rem; display: none;">✓
+                            Applied</span>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Higher = more creative, Lower =
+                            more conservative</p>
+                    </div>
+                </div>
+            </div> <!-- End realtimeContent -->
         </div>
+
+        <!-- ⚠️ RESTART REQUIRED SETTINGS SECTION -->
+        <div id="restartRequiredSection"
+            style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-left: 4px solid #ff9800; border-radius: 8px;">
+            <div class="settings-group" style="margin-bottom: 15px;">
+                <label style="font-size: 1.1rem; color: #e65100; font-weight: 700; user-select: none;">
+                    ⚠️ Restart Required Settings
+                </label>
+                <p style="font-size: 0.85rem; color: #ef6c00; margin-top: 5px;">Changes take effect after restarting
+                    recognition</p>
+            </div>
+            <div id="restartContent">
+
+                <!-- 1. ASR Settings -->
+                <div class="settings-section">
+                    <div class="settings-group" style="margin-bottom: 15px;">
+                        <label style="font-size: 1rem; color: #667eea; font-weight: 600;">📢 ASR Settings</label>
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 5px;">Speech recognition model, input
+                            device, and voice detection</p>
+                    </div>
+
+                    <!-- ASR Model -->
+                    <div class="settings-group" id="asrModelPathGroup">
+                        <label for="asrModelPath">ASR Model Path (Whisper) - macOS:</label>
+                        <input type="text" id="asrModelPath" value="mlx-community/whisper-large-v3-turbo"
+                            style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace; font-size: 0.9rem;">
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">HuggingFace model ID or local
+                            path (MLX format)</p>
+                    </div>
+
+                    <div class="settings-group" id="asrModelSizeGroup">
+                        <label for="asrModelSize">ASR Model Size - Linux/Windows:</label>
+                        <select id="asrModelSize"
+                            style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <option value="tiny">tiny (fastest, lower accuracy)</option>
+                            <option value="base">base (fast)</option>
+                            <option value="small">small (balanced)</option>
+                            <option value="medium">medium (good quality)</option>
+                            <option value="large">large (best quality)</option>
+                            <option value="large-v3-turbo" selected>large-v3-turbo (recommended)</option>
+                        </select>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Auto-download from Hugging Face
+                        </p>
+                    </div>
+
+                    <!-- Input Device -->
+                    <div class="settings-group">
+                        <label for="inputDevice">Input Device (Microphone):</label>
+                        <select id="inputDevice"
+                            style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <option value="">Default (Auto-detect)</option>
+                        </select>
+                        <button id="refreshInputDevices"
+                            style="margin-top: 8px; padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">
+                            🔄 Refresh Devices
+                        </button>
+                    </div>
+
+                    <!-- Voice Detection -->
+                    <div class="settings-group" style="margin-top: 15px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Voice Detection
+                        </h4>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="silenceThreshold">Silence Threshold:</label>
+                        <input type="range" id="silenceThreshold" min="0.001" max="0.05" step="0.001" value="0.005"
+                            style="width: 100%;">
+                        <span id="silenceThresholdValue" style="font-size: 0.9rem; color: #666;">0.005</span>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Audio level below this is
+                            considered silence</p>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="mediumPause">Medium Pause (sentence break):</label>
+                        <input type="range" id="mediumPause" min="0.3" max="2.0" step="0.1" value="0.8"
+                            style="width: 100%;">
+                        <span id="mediumPauseValue" style="font-size: 0.9rem; color: #666;">0.8s</span>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Pause duration indicating
+                            sentence boundary</p>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="longPause">Long Pause (end of speech):</label>
+                        <input type="range" id="longPause" min="0.5" max="3.0" step="0.1" value="1.5"
+                            style="width: 100%;">
+                        <span id="longPauseValue" style="font-size: 0.9rem; color: #666;">1.5s</span>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Pause duration indicating end of
+                            speech segment</p>
+                    </div>
+                </div>
+
+                <!-- 2. Translation Settings (Translation mode only) -->
+                <div id="translationSettingsSection" class="settings-section" style="margin-top: 20px;">
+                    <div class="settings-group" style="margin-bottom: 15px;">
+                        <label style="font-size: 1rem; font-weight: 600; color: #667eea;">🌐 Translation
+                            Settings</label>
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 5px;">Translation model and context
+                            configuration</p>
+                    </div>
+
+                    <!-- Translation Engine Selection -->
+                    <div class="settings-group" style="margin-top: 15px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Translation Engine
+                        </h4>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Choose the translation engine
+                            (Local/API/Google)</p>
+                    </div>
+
+                    <div class="settings-group">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div class="radio-wrapper">
+                                <input type="radio" name="transEngine" id="engineLocal" value="local" checked>
+                                <label for="engineLocal">Local Model (MLX/Transformers)</label>
+                            </div>
+                            <div class="radio-wrapper">
+                                <input type="radio" name="transEngine" id="engineGguf" value="gguf">
+                                <label for="engineGguf">Local Model (GGUF via llama-cpp)</label>
+                            </div>
+                            <div class="radio-wrapper">
+                                <input type="radio" name="transEngine" id="engineApi" value="api">
+                                <label for="engineApi">External API Server (LM Studio/Ollama)</label>
+                            </div>
+                            <div class="radio-wrapper">
+                                <input type="radio" name="transEngine" id="engineGoogle" value="google">
+                                <label for="engineGoogle">Google Cloud Translation API</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Local Model (MLX/Transformers) Settings -->
+                    <div id="localModelSettings" class="settings-section">
+                        <div class="settings-group">
+                            <label for="translationModelPath">Local Translation Model Path:</label>
+                            <input type="text" id="translationModelPath" value="mlx-community/gpt-oss-20b-MXFP4-Q4"
+                                list="modelSuggestions"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace; font-size: 0.9rem;">
+                            <datalist id="modelSuggestions">
+                                <option value="mlx-community/gpt-oss-20b-MXFP4-Q4">
+                                <option value="mlx-community/Llama-3.2-3B-Instruct-4bit">
+                                <option value="mlx-community/plamo-2-8b">
+                            </datalist>
+                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">HuggingFace model ID or
+                                local path (macOS: MLX format)</p>
+                        </div>
+                    </div>
+
+                    <!-- GGUF Settings -->
+                    <div id="ggufSettings" class="settings-section hidden">
+                        <div class="settings-group">
+                            <label for="ggufModelPath">GGUF Repo ID / Local Path:</label>
+                            <input type="text" id="ggufModelPath" value="unsloth/gpt-oss-20b-GGUF"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace;">
+                        </div>
+                        <div class="settings-group">
+                            <label for="ggufModelFile">GGUF Filename:</label>
+                            <input type="text" id="ggufModelFile" value="gpt-oss-20b-Q4_K_M.gguf"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-family: monospace;">
+                        </div>
+                        <div class="settings-group" style="display: flex; gap: 10px;">
+                            <div style="flex: 1;">
+                                <label for="ggufGpuLayers">GPU Layers:</label>
+                                <input type="number" id="ggufGpuLayers" value="-1" style="width: 100%;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label for="ggufThreads">Threads:</label>
+                                <input type="number" id="ggufThreads" value="8" style="width: 100%;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- API Server Settings -->
+                    <div id="apiServerSettings" class="settings-section hidden">
+                        <div class="settings-group">
+                            <label for="apiBaseUrl">API Base URL:</label>
+                            <input type="text" id="apiBaseUrl" value="http://localhost:1234/v1"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">OpenAI-compatible API
+                                endpoint</p>
+                        </div>
+
+                        <div class="settings-group">
+                            <label for="apiModel">Model Name:</label>
+                            <input type="text" id="apiModel" value="local-model"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Model name configured in API
+                                server</p>
+                        </div>
+                    </div>
+
+                    <!-- Google Translate Settings -->
+                    <div id="googleTranslateSettings" class="settings-section hidden">
+                        <div class="settings-group">
+                            <label for="googleApiKey">Google Translate API Key:</label>
+                            <input type="password" id="googleApiKey" value="" placeholder="Enter API Key here..."
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Requires Google Cloud
+                                Translation API Key in .env</p>
+                        </div>
+                    </div>
+
+                    <!-- Context Window Size -->
+                    <div class="settings-group" style="margin-top: 15px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 600; color: #555; margin: 0;">Context Window
+                            Size</h4>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Number of previous sentences to
+                            use for translation context</p>
+                    </div>
+                    <div class="settings-group">
+                        <label for="contextWindowSize">Context Window Size:</label>
+                        <input type="range" id="contextWindowSize" min="1" max="20" step="1" value="8"
+                            style="width: 100%;">
+                        <span id="contextWindowSizeValue" style="font-size: 0.9rem; color: #666;">8 sentences</span>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 4px;">Higher values provide more
+                            context but require restart to apply</p>
+                    </div>
+                </div>
+
+                <!-- Save Settings Button -->
+                <div class="settings-group" style="margin-top: 30px;">
+                    <button id="saveAdvancedSettings"
+                        style="width: 100%; padding: 14px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);">
+                        💾 Save & Apply on Restart
+                    </button>
+                    <p style="font-size: 0.8rem; color: #ef6c00; text-align: center; margin-top: 8px;">⚠️ These
+                        settings require stopping and restarting recognition to take effect</p>
+                </div>
+            </div> <!-- End restartContent -->
+        </div>
+    </div>
     </div>
 
     <script>

@@ -62,6 +62,7 @@ class ServerState:
             "source_lang": "en",
             "target_lang": "ja",
         }
+        self.port = 8000
         self.recognition_thread = None
         self.is_recognition_running = False
         self.recognition_system = None  # AudioTranscriptionSystem instance
@@ -76,6 +77,14 @@ class ConfigUpdateRequest(BaseModel):
     updates: Dict
 
 # WebSocket接続の管理
+# キーワード検索
+try:
+    from utils.keyword_search import KeywordSearch
+    search_engine = KeywordSearch(debug=True)
+except Exception as e:
+    logger.warning(f"Failed to initialize KeywordSearch in server: {e}")
+    search_engine = None
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -91,6 +100,10 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict):
         """全接続クライアントにメッセージをブロードキャスト"""
+        msg_type = message.get("type", "unknown")
+        if msg_type == "keywords":
+            logger.info(f"Broadcasting keywords to {len(self.active_connections)} clients: {message.get('keywords')}")
+
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
@@ -161,7 +174,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     server_state.config["tts_enabled"] = tts_enabled
 
                     # 認識システムを起動
-                    web_ui_url = "http://localhost:8000"
+                    web_ui_url = f"http://localhost:{server_state.port}"
                     recognition_thread = threading.Thread(
                         target=run_recognition_system,
                         args=("config.yaml", source_lang, target_lang, web_ui_url, mode, tts_enabled),
@@ -416,6 +429,49 @@ async def update_config(request: ConfigUpdateRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating config: {str(e)}")
+
+
+@app.post("/api/keywords/extract")
+async def extract_keywords_from_text(payload: dict):
+    """
+    外部（フロントエンド等）からの依頼でキーワードを抽出・検索し、
+    全クライアントにブロードキャストする。
+    """
+    text = payload.get("text")
+    lang = payload.get("language", "ja")
+    pair_id = payload.get("pair_id")
+
+    if not text or not search_engine:
+        return {"status": "error", "message": "Text or search engine missing"}
+
+    # 同期的な検索処理をスレッドプールで実行
+    def do_search(loop):
+        try:
+            keywords = search_engine.extract_keywords_simple(text, lang)
+            if keywords:
+                articles, images = search_engine.search(keywords)
+                # 全員に通知 (メインスレッドのループで実行)
+                coro = manager.broadcast({
+                    "type": "keywords",
+                    "keywords": keywords,
+                    "articles": articles,
+                    "images": images,
+                    "pair_id": pair_id or datetime.now().isoformat(),
+                    "timestamp": datetime.now().isoformat()
+                })
+                asyncio.run_coroutine_threadsafe(coro, loop)
+                return {"status": "success", "keywords": keywords}
+            return {"status": "no_keywords"}
+        except Exception as e:
+            logger.error(f"Error in extract_keywords_from_text search: {e}")
+            return {"status": "error", "message": str(e)}
+
+    # 現在のループを取得してスレッドに渡す
+    loop = asyncio.get_event_loop()
+    import threading
+    threading.Thread(target=do_search, args=(loop,), daemon=True).start()
+
+    return {"status": "accepted"}
 
 
 @app.get("/api/audio/devices")
@@ -695,6 +751,7 @@ def run_server(host: str = "0.0.0.0", port: int = 8000,
     logger.info(f"Starting Web UI server at http://{host}:{port}")
 
     # Run uvicorn with graceful shutdown support
+    server_state.port = port
     try:
         uvicorn.run(app, host=host, port=port, log_level="info", log_config=log_config)
     except KeyboardInterrupt:

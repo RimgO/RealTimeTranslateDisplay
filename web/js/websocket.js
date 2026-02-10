@@ -7,6 +7,7 @@
 import { ws, isConnected, isRunning, setWs, setIsConnected, setIsRunning, DOM } from './state.js';
 import { updateStatus } from './ui.js';
 import { handleRecognizedText, handleTranslatedText } from './text-display.js';
+import { handleKeywords } from './search-display.js';
 import { checkRecognitionStatus } from './settings.js';
 
 /**
@@ -85,6 +86,10 @@ function handleMessage(data) {
 
         case 'translated':
             handleTranslatedText(data);
+            break;
+
+        case 'keywords':
+            handleKeywords(data);
             break;
 
         case 'error':

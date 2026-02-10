@@ -48,3 +48,6 @@ logs/
 
 # User-specific configuration
 config.yaml
+*.log
+test_ddgs*.py
+test_keywords.py

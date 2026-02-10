@@ -57,6 +57,9 @@ except ImportError:
     GOOGLE_AVAILABLE = False
     logger.info("INFO: google-cloud-translate package not available. Google Translate mode will not be supported.")
 
+# Keyword Search Utility
+from utils.keyword_search import KeywordSearch
+
 
 class Translation:
     """
@@ -171,6 +174,9 @@ class Translation:
         
         # 用語集
         self.glossary = {}
+
+        # キーワード検索ユーティリティ
+        self.keyword_search = KeywordSearch(debug=debug)
 
         # プロンプトテンプレート
         self.prompt_template = self._setup_translation_prompt()
@@ -523,6 +529,25 @@ class Translation:
                 for item, processed_text in processed_items:
                     original_text = item['text']
                     pair_id = item.get('pair_id')
+
+                    # キーワード抽出と検索（バックグラウンドで実行）を翻訳前に行う
+                    if self.web_ui and self.keyword_search:
+                        def trigger_keyword_search(txt, pid, lang):
+                            try:
+                                if self.debug:
+                                    logger.info(f"Triggering keyword search for text: '{txt[:30]}...' (lang: {lang})")
+                                keywords = self.keyword_search.extract_keywords_simple(txt, lang)
+                                if keywords:
+                                    articles, images = self.keyword_search.search(keywords)
+                                    self.web_ui.send_keywords(keywords, articles, images, pid)
+                            except Exception as e:
+                                logger.error(f"Keyword search background error: {e}")
+
+                        threading.Thread(
+                            target=trigger_keyword_search,
+                            args=(processed_text, pair_id, self.lang_config.source),
+                            daemon=True
+                        ).start()
 
                     translated_text = self.translate_text(processed_text)
 

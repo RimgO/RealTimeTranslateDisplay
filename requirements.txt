@@ -5,6 +5,7 @@ psutil>=5.9.8,<8.0.0
 noisereduce>=3.0.0,<4.0.0
 scipy>=1.11,<2.0.0
 requests>=2.32.3,<3.0.0
+duckduckgo_search>=6.0.0
 
 # --- Hugging Face / LLM 共通 ---
 transformers>=4.45.0,<5.0.0

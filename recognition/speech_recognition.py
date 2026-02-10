@@ -18,6 +18,8 @@ else:
 
 # 共通の音声正規化関数
 from utils.audio_normalization import normalize_audio
+from utils.keyword_search import KeywordSearch
+import threading
 
 # Setup logger
 logger = setup_logger(__name__)
@@ -34,6 +36,7 @@ class SpeechRecognition:
         self.lang_config = lang_config
         self.debug = debug
         self.web_ui = web_ui  # Web UI Bridge
+        self.keyword_search = KeywordSearch(debug=debug)
 
         # ConfigManagerから設定を取得
         if hasattr(config_manager, 'get_model_config'):
@@ -145,6 +148,23 @@ class SpeechRecognition:
                     # Web UIに送信（ペアID付き）
                     if self.web_ui:
                         self.web_ui.send_recognized_text(text, self.lang_config.source, pair_id)
+                        
+                        # 翻訳キューがない場合（文字起こしのみモード）、ここでキーワード検索を発動
+                        if not self.translation_queue and self.keyword_search:
+                            def trigger_keyword_search(txt, pid, lang):
+                                try:
+                                    keywords = self.keyword_search.extract_keywords_simple(txt, lang)
+                                    if keywords:
+                                        articles, images = self.keyword_search.search(keywords)
+                                        self.web_ui.send_keywords(keywords, articles, images, pid)
+                                except Exception as e:
+                                    logger.error(f"Keyword search background error (SR): {e}")
+
+                            threading.Thread(
+                                target=trigger_keyword_search,
+                                args=(text, pair_id, self.lang_config.source),
+                                daemon=True
+                            ).start()
 
                 elif self.debug and not text:
                     logger.info("認識結果が空です。")
