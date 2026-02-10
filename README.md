@@ -88,6 +88,18 @@ The Audio Recognition System enables audio transcription and, optionally, transl
    pip install -r requirements.txt
    ```
 
+### 4. Environment Setup
+
+   Set up environment variables for API keys and tokens:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env` and set your variables:
+   - `HF_TOKEN`: Hugging Face token (required for gated models like Plamo-2)
+   - `GOOGLE_TRANSLATE_API_KEY`: (Optional) Google Cloud Translation API key
+
 ## Configuration
 
 The system uses a `config.yaml` file for all settings. A default configuration file is included in the repository.
@@ -574,7 +586,7 @@ python main_with_translation.py --profile development --debug
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
