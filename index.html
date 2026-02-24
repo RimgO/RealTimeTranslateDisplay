@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Translate Display</title>
+    <link rel="stylesheet" href="./src/style.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Main Background / Screen Capture -->
+        <div class="video-container">
+            <video id="display-video" autoplay playsinline muted></video>
+
+            <!-- Subtitle Overlay Area -->
+            <div id="subtitle-overlay" class="subtitle-overlay">
+                <div id="original-text" class="text-original">音声認識を開始してください...</div>
+                <div id="translated-text" class="text-translated"></div>
+            </div>
+
+            <!-- Search Results Mini-Panel (Modern Overlay) -->
+            <div id="search-overlay" class="search-overlay">
+                <!-- Keywords will be injected here -->
+            </div>
+        </div>
+
+        <!-- Controls UI -->
+        <div class="top-buttons">
+            <button id="btn-toggle-controls" class="btn-toggle" title="設定を隠す/表示">
+                <span class="icon">⚙️</span>
+            </button>
+            <button id="btn-toggle-history" class="btn-toggle" title="トピック履歴を表示/非表示">
+                <span class="icon">📜</span>
+            </button>
+        </div>
+
+        <div id="topic-history" class="topic-history-panel hidden">
+            <div class="history-header">
+                <h3>📜 話題の履歴 (Topic History)</h3>
+            </div>
+            <div id="history-list" class="history-list">
+                <!-- History items will be kept here -->
+                <p class="placeholder">話題が見つかるとここに蓄積されます</p>
+            </div>
+        </div>
+
+        <div id="controls-panel" class="controls-panel">
+            <div class="glass-card">
+                <h1>Realtime Translate Display</h1>
+                <div class="status-indicator">
+                    <span id="status-dot" class="dot"></span>
+                    <span id="status-message">準備完了</span>
+                    <a href="http://localhost:8002" target="_blank"
+                        style="margin-left: auto; font-size: 0.75rem; color: #667eea; text-decoration: none; border: 1px solid #667eea; padding: 2px 6px; border-radius: 4px;">⚙️
+                        Advanced Dashboard</a>
+                </div>
+
+                <div class="button-group">
+                    <button id="btn-capture" class="btn primary">
+                        <span class="icon">📺</span> 画面キャプチャ開始
+                    </button>
+                    <button id="btn-speech" class="btn secondary">
+                        <span class="icon">🎤</span> 音声認識開始
+                    </button>
+                    <div id="mic-visualizer" class="mic-visualizer">
+                        <div class="bar-container">
+                            <div id="mic-bar" class="bar"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="setting-item">
+                        <label>音声ソース</label>
+                        <select id="select-audio-source">
+                            <option value="mic">PCマイクのみ (Microphone Only)</option>
+                            <option value="system">デスクトップ音声 / タブの音声を翻訳 (System/Tab Audio)</option>
+                        </select>
+                        <div id="system-audio-note" class="info-note" style="display: none;">
+                            <p><strong>💡 Macでタブ音声を翻訳する場合:</strong></p>
+                            <ol style="margin-left: 1.2rem; font-size: 0.7rem;">
+                                <li><strong>BlackHole</strong> をインストール</li>
+                                <li>Macの出力先を <strong>BlackHole 2ch</strong> に設定</li>
+                                <li>この画面の「マイク選択」で <strong>BlackHole 2ch</strong> を選ぶ</li>
+                            </ol>
+                            <p style="margin-top: 5px; font-size: 0.7rem;">※ ブラウザのSpeech
+                                APIはマイク入力のみをサポートするため、仮想デバイスによるルーティングが必要です。</p>
+                        </div>
+                    </div>
+
+                    <div id="mic-device-setting" class="setting-item">
+                        <label>マイク選択</label>
+                        <select id="select-mic-device">
+                            <option value="default">規定のデバイス</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>翻訳エンジン</label>
+                        <select id="select-engine">
+                            <option value="mock">デモ (Mock)</option>
+                            <option value="ollama">Ollama (Local LLM)</option>
+                            <option value="mlx">MLX Audio Recognition System</option>
+                            <option value="google">Google Cloud Translation API</option>
+                        </select>
+                    </div>
+
+                    <div id="mlx-settings" class="setting-item" style="display: none;">
+                        <div class="sub-setting">
+                            <label>Server URL</label>
+                            <input type="text" id="input-mlx-url" value="ws://localhost:8002/ws">
+                        </div>
+                        <div class="sub-setting">
+                            <label>Mode</label>
+                            <select id="select-mlx-mode">
+                                <option value="translation">Translation</option>
+                                <option value="transcript">Transcription Only</option>
+                            </select>
+                        </div>
+                        <div class="sub-setting">
+                            <label>Max Text Buffer (3s - 30s): <span id="val-max-duration">30</span>s</label>
+                            <input type="range" id="input-max-duration" min="3" max="30" step="1" value="30">
+                            <p style="font-size: 0.7em; color: #aaa;">*Shorter = frequent translation updates. Restart
+                                required.</p>
+                        </div>
+                    </div>
+
+                    <div id="ollama-settings" class="setting-item" style="display: none;">
+                        <div class="sub-setting">
+                            <label>Ollama URL</label>
+                            <input type="text" id="input-ollama-url" value="http://localhost:11434">
+                        </div>
+                        <div class="sub-setting">
+                            <label>モデル名</label>
+                            <input type="text" id="input-ollama-model" value="gemma2:2b">
+                        </div>
+                    </div>
+
+                    <div id="google-settings" class="setting-item" style="display: none;">
+                        <div class="sub-setting">
+                            <label>Google Translate API Key</label>
+                            <input type="password" id="input-google-key" value="" placeholder="APIキーを入力">
+                        </div>
+                        <p style="font-size: 0.7rem; color: #aaa; margin-top: 5px;">※ ブラウザから直接Google APIを呼び出します</p>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>
+                            読み上げ (TTS)
+                            <input type="checkbox" id="check-tts" checked>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>翻訳元言語 (Source)</label>
+                        <select id="select-source-lang">
+                            <option value="en">英語 (English)</option>
+                            <option value="ja" selected>日本語 (Japanese)</option>
+                            <option value="zh">中国語 (Chinese)</option>
+                            <option value="ko">韓国語 (Korean)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>翻訳先言語</label>
+                        <select id="select-lang">
+                            <option value="en">英語 (English)</option>
+                            <option value="ja">日本語 (Japanese)</option>
+                            <option value="zh">中国語 (Chinese)</option>
+                            <option value="ko">韓国語 (Korean)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>原文サイズ: <span id="val-font-original">1.5</span>rem</label>
+                        <input type="range" id="input-font-original" min="0.5" max="10" step="0.1" value="1.5">
+
+                        <div class="sub-setting">
+                            <label>文字色 / 縁取り色</label>
+                            <div style="display: flex; gap: 10px; margin-top: 5px;">
+                                <input type="color" id="input-color-original-fill" value="#ffffff" title="文字色">
+                                <input type="color" id="input-color-original-stroke" value="#000000" title="縁取り色">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>翻訳サイズ: <span id="val-font-translated">2.5</span>rem</label>
+                        <input type="range" id="input-font-translated" min="1" max="10" step="0.1" value="2.5">
+
+                        <div class="sub-setting">
+                            <label>文字色 / 縁取り色</label>
+                            <div style="display: flex; gap: 10px; margin-top: 5px;">
+                                <input type="color" id="input-color-translated-fill" value="#ffffff" title="文字色">
+                                <input type="color" id="input-color-translated-stroke" value="#000000" title="縁取り色">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+</body>
+
+</html>

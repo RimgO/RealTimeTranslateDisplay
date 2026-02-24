@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+.venv/
+__pycache__/
+audio-recognition-system/.git_backup
