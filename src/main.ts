@@ -18,8 +18,6 @@ interface SpeechRecognition extends EventTarget {
 class TranslateApp {
     private videoElement: HTMLVideoElement;
     private subtitleOverlay: HTMLElement;
-    private originalTextElement: HTMLElement;
-    private translatedTextElement: HTMLElement;
     private btnCapture: HTMLButtonElement;
     private btnSpeech: HTMLButtonElement;
     private statusDot: HTMLElement;
@@ -71,7 +69,6 @@ class TranslateApp {
     private lastTranslatedText: string = '';
     private translationAbortController: AbortController | null = null;
 
-    // Auto font size adjustment settings
     private autoFontSizeEnabled: boolean = true;
     private readonly ORIGINAL_BASE_FONT_SIZE = 1.5; // rem
     private readonly TRANSLATED_BASE_FONT_SIZE = 2.5; // rem
@@ -82,13 +79,16 @@ class TranslateApp {
 
     private mlxSocket: WebSocket | null = null;
 
+    // Background Color Sampling
+    private colorSampleInterval: number | null = null;
+    private sampleCanvas: HTMLCanvasElement;
+    private sampleCtx: CanvasRenderingContext2D | null;
+
     private STORAGE_KEY = 'translate_app_settings';
 
     constructor() {
         this.videoElement = document.getElementById('display-video') as HTMLVideoElement;
         this.subtitleOverlay = document.getElementById('subtitle-overlay') as HTMLElement;
-        this.originalTextElement = document.getElementById('original-text') as HTMLElement;
-        this.translatedTextElement = document.getElementById('translated-text') as HTMLElement;
         this.btnCapture = document.getElementById('btn-capture') as HTMLButtonElement;
         this.btnSpeech = document.getElementById('btn-speech') as HTMLButtonElement;
         this.statusDot = document.getElementById('status-dot') as HTMLElement;
@@ -132,6 +132,11 @@ class TranslateApp {
         this.micVisualizer = document.getElementById('mic-visualizer') as HTMLElement;
         this.micBar = document.getElementById('mic-bar') as HTMLElement;
         this.checkTts = document.getElementById('check-tts') as HTMLInputElement;
+
+        this.sampleCanvas = document.createElement('canvas');
+        this.sampleCanvas.width = 100;
+        this.sampleCanvas.height = 30; // Aspect ratio reflecting the bottom portion of the screen
+        this.sampleCtx = this.sampleCanvas.getContext('2d', { willReadFrequently: true });
 
         this.loadSettings();
         this.initEventListeners();
@@ -215,12 +220,12 @@ class TranslateApp {
 
                 if (settings.fontOriginal) {
                     this.inputFontOriginal.value = settings.fontOriginal;
-                    this.originalTextElement.style.fontSize = `${settings.fontOriginal}rem`;
+                    this.subtitleOverlay.style.setProperty('--original-font-size', `${settings.fontOriginal}rem`);
                     this.valFontOriginal.innerText = settings.fontOriginal;
                 }
                 if (settings.fontTranslated) {
                     this.inputFontTranslated.value = settings.fontTranslated;
-                    this.translatedTextElement.style.fontSize = `${settings.fontTranslated}rem`;
+                    this.subtitleOverlay.style.setProperty('--translated-font-size', `${settings.fontTranslated}rem`);
                     this.valFontTranslated.innerText = settings.fontTranslated;
                 }
 
@@ -245,13 +250,47 @@ class TranslateApp {
     }
 
     private updateColorStyles() {
-        if (this.originalTextElement) {
-            this.originalTextElement.style.setProperty('--original-fill', this.inputColorOriginalFill.value);
-            this.originalTextElement.style.setProperty('--original-stroke', this.inputColorOriginalStroke.value);
+        if (this.subtitleOverlay) {
+            this.subtitleOverlay.style.setProperty('--original-fill', this.inputColorOriginalFill.value);
+            this.subtitleOverlay.style.setProperty('--original-stroke', this.inputColorOriginalStroke.value);
+            this.subtitleOverlay.style.setProperty('--translated-fill', this.inputColorTranslatedFill.value);
+            this.subtitleOverlay.style.setProperty('--translated-stroke', this.inputColorTranslatedStroke.value);
         }
-        if (this.translatedTextElement) {
-            this.translatedTextElement.style.setProperty('--translated-fill', this.inputColorTranslatedFill.value);
-            this.translatedTextElement.style.setProperty('--translated-stroke', this.inputColorTranslatedStroke.value);
+    }
+
+    private getOrCreateCurrentSubtitlePair() {
+        let pair = this.subtitleOverlay.querySelector('.subtitle-pair.current') as HTMLElement;
+        if (!pair) {
+            pair = document.createElement('div');
+            pair.className = 'subtitle-pair current';
+
+            const orig = document.createElement('div');
+            orig.className = 'text-original';
+
+            const trans = document.createElement('div');
+            trans.className = 'text-translated';
+
+            pair.appendChild(orig);
+            pair.appendChild(trans);
+
+            this.subtitleOverlay.appendChild(pair);
+        }
+        return {
+            pair,
+            orig: pair.querySelector('.text-original') as HTMLElement,
+            trans: pair.querySelector('.text-translated') as HTMLElement
+        };
+    }
+
+    private commitCurrentSubtitle() {
+        const current = this.subtitleOverlay.querySelector('.subtitle-pair.current');
+        if (current) {
+            current.classList.remove('current');
+
+            // Limit stack to 5 items to prevent DOM/screen overflow
+            while (this.subtitleOverlay.children.length > 5) {
+                this.subtitleOverlay.firstChild?.remove();
+            }
         }
     }
 
@@ -361,14 +400,14 @@ class TranslateApp {
 
         this.inputFontOriginal.addEventListener('input', () => {
             const val = this.inputFontOriginal.value;
-            this.originalTextElement.style.fontSize = `${val}rem`;
+            this.subtitleOverlay.style.setProperty('--original-font-size', `${val}rem`);
             this.valFontOriginal.innerText = val;
             this.saveSettings();
         });
 
         this.inputFontTranslated.addEventListener('input', () => {
             const val = this.inputFontTranslated.value;
-            this.translatedTextElement.style.fontSize = `${val}rem`;
+            this.subtitleOverlay.style.setProperty('--translated-font-size', `${val}rem`);
             this.valFontTranslated.innerText = val;
             this.saveSettings();
         });
@@ -457,6 +496,8 @@ class TranslateApp {
                 this.startMicVisualizer(this.stream);
             }
 
+            this.startBgColorSampling();
+
             const videoTrack = this.stream.getVideoTracks()[0];
             if (videoTrack) {
                 videoTrack.onended = () => {
@@ -465,6 +506,8 @@ class TranslateApp {
                     if (this.selectAudioSource.value === 'system') {
                         this.stopMicVisualizer();
                     }
+                    this.stopBgColorSampling();
+                    this.updateColorStyles(); // Revert to user's selected colors
                 };
             }
         } catch (err) {
@@ -504,17 +547,19 @@ class TranslateApp {
 
                 const currentText = finalTranscript || interimTranscript;
                 if (currentText && currentText !== this.lastTranslatedText) {
-                    this.originalTextElement.innerText = currentText;
-                    this.adjustFontSize(this.originalTextElement, currentText, 'original');
+                    const { orig, trans } = this.getOrCreateCurrentSubtitlePair();
+                    orig.innerText = currentText;
+                    this.adjustFontSize(orig, currentText, 'original');
 
                     // Only translate if it's the final transcript or if we haven't translated in a while
                     // To prevent overwhelming Ollama
                     if (finalTranscript || !this.isTranslating) {
-                        this.translateText(currentText);
+                        this.translateText(currentText, trans);
                         if (finalTranscript) {
                             this.lastTranslatedText = finalTranscript;
                             // Trigger keyword extraction via backend API
                             this.triggerBackendKeywordAnalysis(finalTranscript);
+                            this.commitCurrentSubtitle();
                         }
                     }
                 }
@@ -635,15 +680,18 @@ class TranslateApp {
             this.mlxSocket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.type === 'recognized') {
-                    this.originalTextElement.innerText = data.text;
-                    this.adjustFontSize(this.originalTextElement, data.text, 'original');
+                    const { orig } = this.getOrCreateCurrentSubtitlePair();
+                    orig.innerText = data.text;
+                    this.adjustFontSize(orig, data.text, 'original');
                 } else if (data.type === 'translated') {
-                    this.translatedTextElement.innerText = data.text;
-                    this.adjustFontSize(this.translatedTextElement, data.text, 'translated');
+                    const { orig, trans } = this.getOrCreateCurrentSubtitlePair();
+                    trans.innerText = data.text;
+                    this.adjustFontSize(trans, data.text, 'translated');
                     if (data.source_text) {
-                        this.originalTextElement.innerText = data.source_text;
-                        this.adjustFontSize(this.originalTextElement, data.source_text, 'original');
+                        orig.innerText = data.source_text;
+                        this.adjustFontSize(orig, data.source_text, 'original');
                     }
+                    this.commitCurrentSubtitle();
                 } else if (data.type === 'keywords') {
                     console.log('Keywords received:', data);
                     this.renderKeywords(data);
@@ -875,27 +923,27 @@ class TranslateApp {
         this.micVisualizer.classList.remove('active');
     }
 
-    private async translateText(text: string) {
+    private async translateText(text: string, elementToUpdate: HTMLElement) {
         const engine = this.selectEngine.value;
         const targetLang = this.selectLang.value;
 
         if (engine === 'ollama') {
-            await this.translateWithOllama(text, targetLang);
+            await this.translateWithOllama(text, targetLang, elementToUpdate);
         } else if (engine === 'google') {
-            await this.translateWithGoogle(text, targetLang);
+            await this.translateWithGoogle(text, targetLang, elementToUpdate);
         } else {
             // Mock translation
             if (engine === 'mock') {
-                this.translatedTextElement.innerText = `[${targetLang.toUpperCase()}] ${text}`;
+                elementToUpdate.innerText = `[${targetLang.toUpperCase()}] ${text}`;
             }
-            // For 'mlx', we don't update translatedTextElement here as it comes via WebSocket
+            // For 'mlx', translation is handled by WebSocket
         }
     }
 
-    private async translateWithGoogle(text: string, targetLang: string) {
+    private async translateWithGoogle(text: string, targetLang: string, elementToUpdate: HTMLElement) {
         const apiKey = this.inputGoogleKey.value.trim();
         if (!apiKey) {
-            this.translatedTextElement.innerText = '(Google APIキーが未設定です)';
+            elementToUpdate.innerText = '(Google APIキーが未設定です)';
             return;
         }
 
@@ -930,18 +978,18 @@ class TranslateApp {
             const textArea = document.createElement('textarea');
             textArea.innerHTML = translatedText;
             const unescapedText = textArea.value;
-            this.translatedTextElement.innerText = unescapedText;
-            this.adjustFontSize(this.translatedTextElement, unescapedText, 'translated');
+            elementToUpdate.innerText = unescapedText;
+            this.adjustFontSize(elementToUpdate, unescapedText, 'translated');
         } catch (err: any) {
             if (err.name === 'AbortError') return;
             console.error('Google Translate Error:', err);
-            this.translatedTextElement.innerText = `(Google翻訳エラー: ${err.message})`;
+            elementToUpdate.innerText = `(Google翻訳エラー: ${err.message})`;
         } finally {
             this.isTranslating = false;
         }
     }
 
-    private async translateWithOllama(text: string, targetLang: string) {
+    private async translateWithOllama(text: string, targetLang: string, elementToUpdate: HTMLElement) {
         const baseUrl = this.inputOllamaUrl.value.trim().replace(/\/$/, '');
         const model = this.inputOllamaModel.value.trim();
 
@@ -992,7 +1040,7 @@ class TranslateApp {
 
             const data = await response.json();
             const translatedText = data.response.trim();
-            this.translatedTextElement.innerText = translatedText;
+            elementToUpdate.innerText = translatedText;
         } catch (err: any) {
             if (err.name === 'AbortError') return;
 
@@ -1010,7 +1058,7 @@ class TranslateApp {
                 this.updateStatus('error', 'Ollama モデル読込エラー');
             }
 
-            this.translatedTextElement.innerText = errorMessage;
+            elementToUpdate.innerText = errorMessage;
         } finally {
             this.isTranslating = false;
         }
@@ -1050,7 +1098,102 @@ class TranslateApp {
             fontSize = Math.max(this.MIN_FONT_SIZE, baseFontSize * scaleFactor);
         }
 
+        // As a fallback to directly override the variable if the user defined logic relies on inline style:
         element.style.fontSize = `${fontSize}rem`;
+    }
+
+    private startBgColorSampling() {
+        if (this.colorSampleInterval) {
+            clearInterval(this.colorSampleInterval);
+        }
+
+        this.colorSampleInterval = window.setInterval(() => {
+            this.updateStrokeColorFromVideo();
+        }, 300); // 300ms interval for good responsiveness but solid performance
+    }
+
+    private stopBgColorSampling() {
+        if (this.colorSampleInterval) {
+            clearInterval(this.colorSampleInterval);
+            this.colorSampleInterval = null;
+        }
+    }
+
+    private updateStrokeColorFromVideo() {
+        if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
+        if (!this.sampleCtx) return;
+
+        const vw = this.videoElement.videoWidth;
+        const vh = this.videoElement.videoHeight;
+
+        if (vw === 0 || vh === 0) return;
+
+        // Subtitles generally appear on the bottom 40% of the video.
+        const sampleHeight = Math.floor(vh * 0.40);
+        const sampleY = vh - sampleHeight;
+
+        try {
+            this.sampleCtx.drawImage(
+                this.videoElement,
+                0, sampleY, vw, sampleHeight, // Source region: bottom 40%
+                0, 0, this.sampleCanvas.width, this.sampleCanvas.height // Destination rect
+            );
+
+            const imageData = this.sampleCtx.getImageData(0, 0, this.sampleCanvas.width, this.sampleCanvas.height);
+            const data = imageData.data;
+
+            // Bucket colors to find the most dominant color
+            // Use 16 as bucket size to quantize colors
+            const bucketSize = 16;
+            const colorCounts: { [key: string]: { count: number, r: number, g: number, b: number } } = {};
+            let maxCount = 0;
+            let dominantBucket: string | null = null;
+
+            // Step size 16 means moving by 4 pixels (4 bytes * 4) at a time
+            for (let i = 0; i < data.length; i += 16) {
+                const r = data[i] || 0;
+                const g = data[i + 1] || 0;
+                const b = data[i + 2] || 0;
+
+                const rB = Math.floor(r / bucketSize) * bucketSize;
+                const gB = Math.floor(g / bucketSize) * bucketSize;
+                const bB = Math.floor(b / bucketSize) * bucketSize;
+
+                const key = `${rB},${gB},${bB}`;
+                if (!colorCounts[key]) {
+                    colorCounts[key] = { count: 1, r: rB, g: gB, b: bB };
+                } else {
+                    colorCounts[key].count++;
+                }
+
+                if (colorCounts[key] && colorCounts[key]!.count > maxCount) {
+                    maxCount = colorCounts[key]!.count;
+                    dominantBucket = key;
+                }
+            }
+
+
+            if (dominantBucket && colorCounts[dominantBucket]) {
+                const dom = colorCounts[dominantBucket];
+                if (dom) {
+                    // Calculate opposite (complementary) color
+                    // 255 - RGB component values gives the direct opposite in RGB color space
+                    const oppR = 255 - dom.r;
+                    const oppG = 255 - dom.g;
+                    const oppB = 255 - dom.b;
+
+                    // Add an alpha channel of 0.95 for slight blending
+                    const strokeColor = `rgba(${oppR}, ${oppG}, ${oppB}, 0.95)`;
+
+                    if (this.subtitleOverlay) {
+                        this.subtitleOverlay.style.setProperty('--original-stroke', strokeColor);
+                        this.subtitleOverlay.style.setProperty('--translated-stroke', strokeColor);
+                    }
+                }
+            }
+        } catch (e) {
+            // Can fail if cross-origin or video not fully loaded, ignore cleanly
+        }
     }
 }
 

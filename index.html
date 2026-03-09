@@ -16,8 +16,11 @@
 
             <!-- Subtitle Overlay Area -->
             <div id="subtitle-overlay" class="subtitle-overlay">
-                <div id="original-text" class="text-original">音声認識を開始してください...</div>
-                <div id="translated-text" class="text-translated"></div>
+                <!-- Translation pairs will be stacked here dynamically -->
+                <div class="subtitle-pair current">
+                    <div class="text-original">音声認識を開始してください...</div>
+                    <div class="text-translated"></div>
+                </div>
             </div>
 
             <!-- Search Results Mini-Panel (Modern Overlay) -->
