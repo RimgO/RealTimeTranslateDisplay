@@ -41,6 +41,9 @@ class TranslateApp {
     private inputMaxPairs: HTMLInputElement;
     private valMaxPairs: HTMLElement;
 
+    private inputOverlayBottom: HTMLInputElement;
+    private valOverlayBottom: HTMLElement;
+
     private mlxSettings: HTMLElement;
     private inputMlxUrl: HTMLInputElement;
     private selectMlxMode: HTMLSelectElement;
@@ -146,6 +149,9 @@ class TranslateApp {
         this.micBar = document.getElementById('mic-bar') as HTMLElement;
         this.checkTts = document.getElementById('check-tts') as HTMLInputElement;
         this.checkSplitView = document.getElementById('check-split-view') as HTMLInputElement;
+
+        this.inputOverlayBottom = document.getElementById('input-overlay-bottom') as HTMLInputElement;
+        this.valOverlayBottom = document.getElementById('val-overlay-bottom') as HTMLElement;
 
         this.sampleCanvas = document.createElement('canvas');
         this.sampleCanvas.width = 100;
@@ -264,10 +270,19 @@ class TranslateApp {
                     this.valFontTranslated.innerText = settings.fontTranslated;
                 }
 
-                if (settings.colorOriginalFill) this.inputColorOriginalFill.value = settings.colorOriginalFill;
-                if (settings.colorOriginalStroke) this.inputColorOriginalStroke.value = settings.colorOriginalStroke;
                 if (settings.colorTranslatedFill) this.inputColorTranslatedFill.value = settings.colorTranslatedFill;
                 if (settings.colorTranslatedStroke) this.inputColorTranslatedStroke.value = settings.colorTranslatedStroke;
+
+                if (settings.overlayBottom) {
+                    this.inputOverlayBottom.value = settings.overlayBottom;
+                    this.valOverlayBottom.innerText = settings.overlayBottom;
+                    this.subtitleOverlay.style.setProperty('--overlay-bottom', `${settings.overlayBottom}%`);
+                } else {
+                    // Default 20%
+                    this.inputOverlayBottom.value = "20";
+                    this.valOverlayBottom.innerText = "20";
+                    this.subtitleOverlay.style.setProperty('--overlay-bottom', "20%");
+                }
 
                 // Apply colors
                 this.updateColorStyles();
@@ -353,7 +368,8 @@ class TranslateApp {
             menuHidden: this.controlsPanel.classList.contains('hidden'),
             historyHidden: this.topicHistoryPanel.classList.contains('hidden'),
             ttsEnabled: this.checkTts.checked,
-            splitViewEnabled: this.checkSplitView.checked
+            splitViewEnabled: this.checkSplitView.checked,
+            overlayBottom: this.inputOverlayBottom.value
         };
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(settings));
     }
@@ -384,7 +400,8 @@ class TranslateApp {
             this.checkTts,
             this.checkSplitView,
             this.selectEngine,
-            this.inputMaxDuration
+            this.inputMaxDuration,
+            this.inputOverlayBottom
         ];
 
         saveInputs.forEach(input => {
@@ -440,6 +457,13 @@ class TranslateApp {
                     break;
                 }
             }
+        });
+
+        this.inputOverlayBottom.addEventListener('input', () => {
+            const val = this.inputOverlayBottom.value;
+            this.valOverlayBottom.innerText = val;
+            this.subtitleOverlay.style.setProperty('--overlay-bottom', `${val}%`);
+            this.saveSettings();
         });
 
         this.checkSplitView.addEventListener('change', () => {

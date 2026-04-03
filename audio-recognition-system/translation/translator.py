@@ -498,7 +498,7 @@ class Translation:
                 # 最初のアイテムはtimeout付きで待機（CPU効率化）
                 if not texts_to_translate:
                     try:
-                        item = self.translation_queue.get(timeout=1.0)  # 0.1秒→1.0秒に変更でCPU使用率削減
+                        item = self.translation_queue.get(timeout=1.0)
                         if isinstance(item, dict):
                             texts_to_translate.append(item)
                         else:
@@ -508,7 +508,23 @@ class Translation:
                             break
                         continue
 
-                # 残りのアイテムはノンブロッキングで取得
+                # ========================================================
+                # リアルタイム性能向上のための動的バッチング / グルーピング
+                # ========================================================
+                # 他に待機中のテキストがあれば、それらもまとめて取得して同時に処理する
+                # これにより、会話が早くてキューが溜まっている場合に、1回の翻訳コールで追いつくことができる。
+                queue_size = self.translation_queue.qsize()
+                
+                # 溜まりすぎている場合は古いものを一部間引く（ラグの蓄積防止）
+                if queue_size > 10:
+                    logger.warning(f"翻訳キューが混雑しています ({queue_size}件)。一部スキップして最新を優先します。")
+                    while self.translation_queue.qsize() > 5:
+                        try:
+                            self.translation_queue.get_nowait()
+                        except queue.Empty:
+                            break
+
+                # 残りのアイテムをバッチサイズ（またはキューにある分）まで取得
                 while len(texts_to_translate) < self.batch_size:
                     try:
                         item = self.translation_queue.get_nowait()
@@ -519,82 +535,69 @@ class Translation:
                     except queue.Empty:
                         break
 
-                # バッチ翻訳の実行（複数テキストをまとめて処理）
-                translated_texts = []
-                bilingual_texts = []
-                processed_items = [
-                    (item, self.preprocess_text(item['text'])) for item in texts_to_translate
-                ]
+                if not texts_to_translate:
+                    continue
 
-                for item, processed_text in processed_items:
-                    original_text = item['text']
-                    pair_id = item.get('pair_id')
+                # 複数のテキストを1つのブロックとして結合して翻訳を試抜（効率化）
+                # 注意: 用途によっては個別に小分けしたほうがいい場合もあるが、
+                # ラグ解消のためには結合が最も効果的
+                combined_text = "\n".join([item['text'] for item in texts_to_translate])
+                last_pair_id = texts_to_translate[-1].get('pair_id')
 
-                    # キーワード抽出と検索（バックグラウンドで実行）を翻訳前に行う
-                    if self.web_ui and self.keyword_search:
-                        def trigger_keyword_search(txt, pid, lang):
-                            try:
-                                if self.debug:
-                                    logger.info(f"Triggering keyword search for text: '{txt[:30]}...' (lang: {lang})")
-                                keywords = self.keyword_search.extract_keywords_simple(txt, lang)
-                                if keywords:
-                                    articles, images = self.keyword_search.search(keywords)
-                                    self.web_ui.send_keywords(keywords, articles, images, pid)
-                            except Exception as e:
-                                logger.error(f"Keyword search background error: {e}")
+                # キーワード抽出と検索（結合されたテキストで行う）
+                if self.web_ui and self.keyword_search:
+                    def trigger_keyword_search(txt, pid, lang):
+                        try:
+                            keywords = self.keyword_search.extract_keywords_simple(txt, lang)
+                            if keywords:
+                                articles, images = self.keyword_search.search(keywords)
+                                self.web_ui.send_keywords(keywords, articles, images, pid)
+                        except Exception as e:
+                            logger.error(f"Keyword search background error: {e}")
 
-                        threading.Thread(
-                            target=trigger_keyword_search,
-                            args=(processed_text, pair_id, self.lang_config.source),
-                            daemon=True
-                        ).start()
+                    threading.Thread(
+                        target=trigger_keyword_search,
+                        args=(combined_text, last_pair_id, self.lang_config.source),
+                        daemon=True
+                    ).start()
 
-                    translated_text = self.translate_text(processed_text)
+                # 翻訳の実行
+                translated_text = self.translate_text(combined_text)
 
-                    if self.is_valid_translation(translated_text):
-                        # Web UIモードではstdoutに出力しない
-                        if not self.web_ui:
-                            # 翻訳結果はログではなく標準出力
-                            print(f"\n翻訳: {translated_text}\n")
-                        translated_texts.append(translated_text)
-                        bilingual_texts.append(
-                            f"原文 ({self.lang_config.source}): {processed_text}\n"
-                            f"訳文 ({self.lang_config.target}): {translated_text}\n"
-                        )
-                        self.context_window.append(processed_text)
-                        self.consecutive_errors = 0
-
-                        # TTS: 翻訳後のテキストを読み上げ
-                        if self.tts is not None:
-                            try:
-                                self.tts.speak(translated_text)
-                            except Exception as e:
-                                if self.debug:
-                                    logger.info(f"TTS error: {e}")
-
-                        # Web UIに送信（pair_idも送信）
-                        if self.web_ui:
-                            self.web_ui.send_translated_text(translated_text, processed_text, pair_id)
-                    else:
-                        if self.debug:
-                            logger.info(f"翻訳エラー: 有効な翻訳を生成できませんでした。原文: {original_text}")
-                        self.handle_translation_error(item)
-                
-                # ファイルに記録（バッチ書き込みでI/O効率化）
-                if translated_texts or bilingual_texts:
+                if self.is_valid_translation(translated_text):
+                    # 翻訳結果のログ出力（バッチ翻訳全体として）
+                    if not self.web_ui:
+                        print(f"\n翻訳: {translated_text}\n")
+                    
+                    # ログファイルへの記録
                     try:
-                        # 両方のログをまとめて開く（I/Oコストを削減）
-                        files = {}
-                        if translated_texts:
-                            files['translated'] = (self.log_file_path, "\n".join(translated_texts) + "\n")
-                        if bilingual_texts:
-                            files['bilingual'] = (self.bilingual_log_file_path, "\n".join(bilingual_texts) + "\n")
-
-                        for log_type, (file_path, content) in files.items():
-                            with open(file_path, "a", encoding="utf-8") as f:
-                                f.write(content)
+                        with open(self.log_file_path, "a", encoding="utf-8") as f:
+                            f.write(translated_text + "\n")
+                        with open(self.bilingual_log_file_path, "a", encoding="utf-8") as f:
+                            f.write(f"原文: {combined_text}\n訳文: {translated_text}\n\n")
                     except IOError as e:
                         logger.error(f"ログ書き込みエラー: {e}")
+
+                    # コンテキスト追加
+                    self.context_window.append(combined_text)
+                    self.consecutive_errors = 0
+
+                    # TTS
+                    if self.tts is not None:
+                        try:
+                            self.tts.speak(translated_text)
+                        except Exception as e:
+                            if self.debug: logger.info(f"TTS error: {e}")
+
+                    # Web UIに送信（最新個体の pair_id を代表とする）
+                    if self.web_ui:
+                        self.web_ui.send_translated_text(translated_text, combined_text, last_pair_id)
+
+                else:
+                    if self.debug:
+                        logger.info(f"翻訳エラー: 有効な翻訳を生成できませんでした。")
+                    # エラー時は最後の一つを失敗リストに追加
+                    self.handle_translation_error(texts_to_translate[-1])
 
             except Exception as e:
                 logger.error(f"エラー (翻訳スレッド): {e}")

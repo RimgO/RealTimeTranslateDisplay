@@ -53,7 +53,7 @@ body {
 
 .subtitle-overlay {
     position: absolute;
-    bottom: 5%;
+    bottom: var(--overlay-bottom, 20%);
     left: 50%;
     transform: translateX(-50%);
     width: 90%;
