@@ -163,6 +163,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     mode = settings.get("mode") or server_state.config.get("mode", "translation")
                     source_lang = settings.get("source_lang") or server_state.config.get("source_lang")
                     target_lang = settings.get("target_lang") or server_state.config.get("target_lang")
+                    asr_engine = settings.get("asr_engine") or server_state.config.get("asr_engine")
+                    deepgram_api_key = settings.get("deepgram_api_key")
                     tts_enabled = settings.get("tts_enabled")
                     if tts_enabled is None:
                         tts_enabled = server_state.config.get("tts_enabled", True)
@@ -172,12 +174,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     server_state.config["source_lang"] = source_lang
                     server_state.config["target_lang"] = target_lang
                     server_state.config["tts_enabled"] = tts_enabled
+                    if asr_engine:
+                        server_state.config["asr_engine"] = asr_engine
 
                     # 認識システムを起動
                     web_ui_url = f"http://localhost:{server_state.port}"
                     recognition_thread = threading.Thread(
                         target=run_recognition_system,
-                        args=("config.yaml", source_lang, target_lang, web_ui_url, mode, tts_enabled),
+                        args=("config.yaml", source_lang, target_lang, web_ui_url, mode, tts_enabled, asr_engine, deepgram_api_key),
                         daemon=True
                     )
                     recognition_thread.start()
@@ -276,6 +280,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     if server_state.config_manager:
                         server_state.config_manager.set_tts_enabled(tts_enabled)
                         logger.info(f"Live updated TTS to: {tts_enabled} (type: {type(tts_enabled)})")
+
+                if server_state.config_manager:
+                    if "source_lang" in settings or "target_lang" in settings:
+                        server_state.config_manager.set_language(
+                            settings.get("source_lang", server_state.config["source_lang"]),
+                            settings.get("target_lang", server_state.config["target_lang"])
+                        )
+                        logger.info(f"Live updated language to: {server_state.config_manager.language.source} -> {server_state.config_manager.language.target}")
 
                 logger.info(f"Settings updated: {server_state.config}")
 
@@ -562,7 +574,9 @@ def run_recognition_system(config_path: str = "config.yaml",
                           target_lang: Optional[str] = None,
                           web_ui_url: str = "http://localhost:8000",
                           mode: str = "translation",
-                          tts_enabled: bool = True):
+                          tts_enabled: bool = True,
+                          asr_engine: Optional[str] = None,
+                          deepgram_api_key: Optional[str] = None):
     """
     音声認識システムを別スレッドで起動
 
@@ -601,6 +615,12 @@ def run_recognition_system(config_path: str = "config.yaml",
                     sys.argv.append("--tts-enabled")
                 else:
                     sys.argv.append("--no-tts")
+            
+            if asr_engine and asr_engine != 'mlx': # 'mlx' is just the historical name for the original whisper mode in the UI
+                sys.argv.extend(["--asr-engine", asr_engine])
+            
+            if deepgram_api_key:
+                sys.argv.extend(["--deepgram-api-key", deepgram_api_key])
 
             # メイン関数を実行（ブロッキング）
             # システムインスタンスは別スレッドで定期的にチェック

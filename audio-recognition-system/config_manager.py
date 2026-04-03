@@ -86,13 +86,22 @@ class GoogleTranslateConfig:
 
 
 @dataclass
+class DeepgramConfig:
+    """Deepgram API設定データクラス"""
+    api_key: str = ""
+    model: str = "nova-2"
+
+
+@dataclass
 class ModelConfig:
     """モデル設定データクラス"""
-    model_path: str
+    engine: str = "whisper"
+    model_path: Optional[str] = None
     model_size: Optional[str] = None
-    gguf: GGUFConfig = None
-    api: APIConfig = None
-    google: GoogleTranslateConfig = None
+    deepgram: Optional[DeepgramConfig] = None
+    gguf: Optional[GGUFConfig] = None
+    api: Optional[APIConfig] = None
+    google: Optional[GoogleTranslateConfig] = None
     trust_remote_code: bool = False  # セキュリティ: 任意コード実行の制御
 
 
@@ -312,6 +321,7 @@ class ConfigManager:
             'DEBUG': ('debug', 'enabled'),
             'GOOGLE_TRANSLATE_API_KEY': ('models', 'translation', 'google', 'api_key'),
             'GOOGLE_TRANSLATE_ENABLED': ('models', 'translation', 'google', 'enabled'),
+            'DEEPGRAM_API_KEY': ('models', 'asr', 'deepgram', 'api_key'),
         }
         
         for env_var, config_path in env_mappings.items():
@@ -483,6 +493,17 @@ class ConfigManager:
         else:
             platform_config = {}
 
+        # エンジン設定とDeepgram設定を取得
+        engine = model_config.get('engine', 'whisper')
+        deepgram_config = DeepgramConfig()
+        if 'deepgram' in model_config:
+            dg_data = model_config['deepgram']
+            if isinstance(dg_data, dict):
+                deepgram_config = DeepgramConfig(
+                    api_key=dg_data.get('api_key', ''),
+                    model=dg_data.get('model', 'nova-2')
+                )
+
         # GGUF設定を取得
         gguf_config = GGUFConfig()
         if 'gguf' in model_config:
@@ -526,8 +547,10 @@ class ConfigManager:
             trust_remote_code = True
 
         return ModelConfig(
+            engine=engine,
             model_path=platform_config.get('model_path'),
             model_size=platform_config.get('model_size'),
+            deepgram=deepgram_config,
             gguf=gguf_config,
             api=api_config,
             google=google_config,
@@ -655,8 +678,13 @@ class ConfigManager:
             self._config['language'] = {}
         self._config['language']['source'] = source
         self._config['language']['target'] = target
-        # キャッシュを無効化
-        self._language = None
+        # キャッシュを更新（既存のインスタンスが参照している場合を考慮してインプレース更新）
+        if self._language:
+            self._language.source = source
+            self._language.target = target
+        else:
+            # 次回取得時に生成
+            self._language = None
 
     def set_batch_size(self, batch_size: int) -> None:
         """
@@ -692,6 +720,19 @@ class ConfigManager:
             self._config['models'][model_type][self.platform] = {}
 
         self._config['models'][model_type][self.platform]['model_path'] = model_path
+
+    def set_asr_engine(self, engine: str) -> None:
+        """
+        ASRエンジンを設定
+
+        Args:
+            engine: 'whisper' または 'deepgram'
+        """
+        if 'models' not in self._config:
+            self._config['models'] = {}
+        if 'asr' not in self._config['models']:
+            self._config['models']['asr'] = {}
+        self._config['models']['asr']['engine'] = engine
 
     def set_tts_enabled(self, enabled: bool) -> None:
         """

@@ -82,6 +82,26 @@ body {
     animation: fadeIn 0.3s ease;
 }
 
+.subtitle-pair.split {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 3rem;
+    width: 100%;
+}
+
+.subtitle-pair.split .text-original {
+    width: 45%;
+    text-align: right;
+    font-size: var(--original-font-size, 1.5rem);
+}
+
+.subtitle-pair.split .text-translated {
+    width: 45%;
+    text-align: left;
+    font-size: var(--translated-font-size, 2.5rem);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

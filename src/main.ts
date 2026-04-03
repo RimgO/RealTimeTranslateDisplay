@@ -51,6 +51,7 @@ class TranslateApp {
     private deepgramSettings: HTMLElement;
     private inputDeepgramKey: HTMLInputElement;
     private checkTts: HTMLInputElement;
+    private checkSplitView: HTMLInputElement;
 
     private btnToggleControls: HTMLButtonElement;
     private btnToggleHistory: HTMLButtonElement;
@@ -72,6 +73,7 @@ class TranslateApp {
     private analyser: AnalyserNode | null = null;
     private animationId: number | null = null;
     private lastTranslatedText: string = '';
+    private lastDetectionTime: number = 0; // Throttle detection
     private translationAbortController: AbortController | null = null;
 
     private autoFontSizeEnabled: boolean = true;
@@ -143,6 +145,7 @@ class TranslateApp {
         this.micVisualizer = document.getElementById('mic-visualizer') as HTMLElement;
         this.micBar = document.getElementById('mic-bar') as HTMLElement;
         this.checkTts = document.getElementById('check-tts') as HTMLInputElement;
+        this.checkSplitView = document.getElementById('check-split-view') as HTMLInputElement;
 
         this.sampleCanvas = document.createElement('canvas');
         this.sampleCanvas.width = 100;
@@ -241,9 +244,12 @@ class TranslateApp {
                     this.controlsPanel.classList.add('hidden');
                 }
 
-                if (settings.historyHidden === false) {
-                    this.topicHistoryPanel.classList.remove('hidden');
+                if (settings.historyHidden) {
+                    this.topicHistoryPanel.classList.add('hidden');
                 }
+                this.checkTts.checked = settings.ttsEnabled !== false;
+                this.checkSplitView.checked = settings.splitViewEnabled === true;
+                if (settings.selectEngine) this.selectEngine.value = settings.selectEngine;
 
                 if (settings.fontOriginal) {
                     this.inputFontOriginal.value = settings.fontOriginal;
@@ -265,10 +271,6 @@ class TranslateApp {
 
                 // Apply colors
                 this.updateColorStyles();
-
-                if (settings.ttsEnabled !== undefined) {
-                    this.checkTts.checked = settings.ttsEnabled;
-                }
             } catch (e) {
                 console.error('Failed to load settings', e);
             }
@@ -291,7 +293,11 @@ class TranslateApp {
         let pair = this.subtitleOverlay.querySelector('.subtitle-pair.current') as HTMLElement;
         if (!pair) {
             pair = document.createElement('div');
-            pair.className = 'subtitle-pair current';
+            pair.className = 'subtitle-pair';
+            if (this.checkSplitView.checked) {
+                pair.classList.add('split');
+            }
+            pair.classList.add('current');
 
             const orig = document.createElement('div');
             orig.className = 'text-original';
@@ -346,7 +352,8 @@ class TranslateApp {
             maxPairs: this.inputMaxPairs.value,
             menuHidden: this.controlsPanel.classList.contains('hidden'),
             historyHidden: this.topicHistoryPanel.classList.contains('hidden'),
-            ttsEnabled: this.checkTts.checked
+            ttsEnabled: this.checkTts.checked,
+            splitViewEnabled: this.checkSplitView.checked
         };
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(settings));
     }
@@ -375,6 +382,8 @@ class TranslateApp {
             this.inputMlxUrl,
             this.selectMlxMode,
             this.checkTts,
+            this.checkSplitView,
+            this.selectEngine,
             this.inputMaxDuration
         ];
 
@@ -395,13 +404,8 @@ class TranslateApp {
 
         // Add listener for Max Duration Slider logic
         this.inputMaxDuration.addEventListener('change', async () => {
-            // ... existing slider logic ...
             const val = this.inputMaxDuration.value;
             this.valMaxDuration.innerText = val;
-            // ...
-            // Simplified to avoid re-writing the whole block as I am inside replace_file_content for a range
-            // But wait, I'm replacing the whole block including initEventListeners, so I must include the full logic.
-            // I will implement the full logic below as I am replacing the larger block.
             if (this.selectEngine.value === 'mlx' || this.selectEngine.value === 'deepgram') {
                 try {
                     const baseUrl = this.inputMlxUrl.value.trim().replace(/\/ws$/, '').replace(/^ws/, 'http');
@@ -436,6 +440,23 @@ class TranslateApp {
                     break;
                 }
             }
+        });
+
+        this.checkSplitView.addEventListener('change', () => {
+            const isSplit = this.checkSplitView.checked;
+            this.subtitleOverlay.querySelectorAll('.subtitle-pair').forEach(el => {
+                if (isSplit) {
+                    el.classList.add('split');
+                } else {
+                    el.classList.remove('split');
+                }
+            });
+            this.saveSettings();
+        });
+
+        this.selectSourceLang.addEventListener('change', () => {
+            this.updateSettingsVisibility();
+            this.fetchServerConfig();
         });
 
         this.selectEngine.addEventListener('change', () => {
@@ -610,6 +631,9 @@ class TranslateApp {
 
                 const currentText = finalTranscript || interimTranscript;
                 if (currentText && currentText !== this.lastTranslatedText) {
+                    // Try to detect and swap language direction
+                    this.detectAndSwapLanguage(currentText);
+
                     const { orig, trans } = this.getOrCreateCurrentSubtitlePair();
                     orig.innerText = currentText;
                     this.adjustFontSize(orig, currentText, 'original');
@@ -746,6 +770,9 @@ class TranslateApp {
             this.mlxSocket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.type === 'recognized') {
+                    // Try to detect and swap language direction
+                    this.detectAndSwapLanguage(data.text);
+
                     const { orig } = this.getOrCreateCurrentSubtitlePair();
                     orig.innerText = data.text;
                     this.adjustFontSize(orig, data.text, 'original');
@@ -1146,6 +1173,54 @@ class TranslateApp {
      * @param text The text content
      * @param type 'original' or 'translated'
      */
+    private detectAndSwapLanguage(text: string) {
+        // Only detect if it's been a while since last swap, and text is substantial
+        const now = Date.now();
+        if (now - this.lastDetectionTime < 5000) return; // Wait at least 5s between flips
+        if (text.length < 4) return;
+
+        // Japanese characters regex
+        const hasJapanese = /[ぁ-んァ-ヶー一-龠]/.test(text);
+        const sourceLang = this.selectSourceLang.value;
+        const targetLang = this.selectLang.value;
+
+        let swapped = false;
+
+        // English -> Japanese set, but Japanese detected
+        if (sourceLang === 'en' && targetLang === 'ja' && hasJapanese) {
+            this.selectSourceLang.value = 'ja';
+            this.selectLang.value = 'en';
+            swapped = true;
+        } 
+        // Japanese -> English set, but purely English detected (and substantial)
+        else if (sourceLang === 'ja' && targetLang === 'en' && !hasJapanese && text.split(' ').length >= 3) {
+            this.selectSourceLang.value = 'en';
+            this.selectLang.value = 'ja';
+            swapped = true;
+        }
+
+        if (swapped) {
+            console.log(`Language direction auto-swapped to: ${this.selectSourceLang.value} -> ${this.selectLang.value}`);
+            this.lastDetectionTime = now;
+            this.saveAndSyncSettings();
+        }
+    }
+
+    private saveAndSyncSettings() {
+        this.saveSettings();
+        // Update live settings if backend is connected
+        if ((this.selectEngine.value === 'mlx' || this.selectEngine.value === 'deepgram') && 
+            this.mlxSocket && this.mlxSocket.readyState === WebSocket.OPEN) {
+            this.mlxSocket.send(JSON.stringify({
+                type: 'settings',
+                settings: {
+                    source_lang: this.selectSourceLang.value,
+                    target_lang: this.selectLang.value
+                }
+            }));
+        }
+    }
+
     private adjustFontSize(element: HTMLElement, text: string, type: 'original' | 'translated') {
         if (!this.autoFontSizeEnabled || !text) {
             return;
