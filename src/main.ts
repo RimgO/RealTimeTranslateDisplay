@@ -38,6 +38,9 @@ class TranslateApp {
     private inputColorTranslatedFill: HTMLInputElement;
     private inputColorTranslatedStroke: HTMLInputElement;
 
+    private inputMaxPairs: HTMLInputElement;
+    private valMaxPairs: HTMLElement;
+
     private mlxSettings: HTMLElement;
     private inputMlxUrl: HTMLInputElement;
     private selectMlxMode: HTMLSelectElement;
@@ -45,6 +48,8 @@ class TranslateApp {
     private valMaxDuration: HTMLElement;
     private googleSettings: HTMLElement;
     private inputGoogleKey: HTMLInputElement;
+    private deepgramSettings: HTMLElement;
+    private inputDeepgramKey: HTMLInputElement;
     private checkTts: HTMLInputElement;
 
     private btnToggleControls: HTMLButtonElement;
@@ -70,8 +75,8 @@ class TranslateApp {
     private translationAbortController: AbortController | null = null;
 
     private autoFontSizeEnabled: boolean = true;
-    private readonly ORIGINAL_BASE_FONT_SIZE = 1.5; // rem
-    private readonly TRANSLATED_BASE_FONT_SIZE = 2.5; // rem
+    private originalBaseFontSize = 1.5; // rem
+    private translatedBaseFontSize = 2.5; // rem
     private readonly MIN_FONT_SIZE = 0.8; // rem
     private readonly MAX_CHARS_ORIGINAL = 100;
     private readonly MAX_CHARS_TRANSLATED = 80;
@@ -111,6 +116,9 @@ class TranslateApp {
         this.inputColorTranslatedFill = document.getElementById('input-color-translated-fill') as HTMLInputElement;
         this.inputColorTranslatedStroke = document.getElementById('input-color-translated-stroke') as HTMLInputElement;
 
+        this.inputMaxPairs = document.getElementById('input-max-pairs') as HTMLInputElement;
+        this.valMaxPairs = document.getElementById('val-max-pairs') as HTMLElement;
+
         this.btnToggleControls = document.getElementById('btn-toggle-controls') as HTMLButtonElement;
         this.btnToggleHistory = document.getElementById('btn-toggle-history') as HTMLButtonElement;
         this.controlsPanel = document.getElementById('controls-panel') as HTMLElement;
@@ -125,6 +133,9 @@ class TranslateApp {
 
         this.googleSettings = document.getElementById('google-settings') as HTMLElement;
         this.inputGoogleKey = document.getElementById('input-google-key') as HTMLInputElement;
+
+        this.deepgramSettings = document.getElementById('deepgram-settings') as HTMLElement;
+        this.inputDeepgramKey = document.getElementById('input-deepgram-key') as HTMLInputElement;
 
         this.selectAudioSource = document.getElementById('select-audio-source') as HTMLSelectElement;
         this.selectMicDevice = document.getElementById('select-mic-device') as HTMLSelectElement;
@@ -150,7 +161,7 @@ class TranslateApp {
     private async fetchServerConfig() {
         try {
             // MLX 固有の動的設定の更新 (既存ロジック)
-            if (this.selectEngine.value === 'mlx') {
+            if (this.selectEngine.value === 'mlx' || this.selectEngine.value === 'deepgram') {
                 const baseUrl = this.inputMlxUrl.value.trim().replace(/\/ws$/, '').replace(/^ws/, 'http');
                 const response = await fetch(`${baseUrl}/api/config`);
                 if (response.ok) {
@@ -176,6 +187,12 @@ class TranslateApp {
                         if (googleConfig?.api_key && !this.inputGoogleKey.value) {
                             this.inputGoogleKey.value = googleConfig.api_key;
                             this.inputGoogleKey.placeholder = "Loaded from server .env";
+                        }
+                        
+                        const deepgramConfig = data.config.models?.asr?.deepgram;
+                        if (deepgramConfig?.api_key && !this.inputDeepgramKey.value) {
+                            this.inputDeepgramKey.value = deepgramConfig.api_key;
+                            this.inputDeepgramKey.placeholder = "Loaded from server .env";
                         }
                     }
                 }
@@ -209,6 +226,16 @@ class TranslateApp {
                 }
                 if (settings.micDevice) this.selectMicDevice.value = settings.micDevice;
                 if (settings.googleApiKey) this.inputGoogleKey.value = settings.googleApiKey;
+                if (settings.deepgramApiKey) this.inputDeepgramKey.value = settings.deepgramApiKey;
+
+                if (settings.maxPairs) {
+                    this.inputMaxPairs.value = settings.maxPairs;
+                    this.valMaxPairs.innerText = settings.maxPairs;
+                } else {
+                    // Default to 2
+                    this.inputMaxPairs.value = "2";
+                    this.valMaxPairs.innerText = "2";
+                }
 
                 if (settings.menuHidden) {
                     this.controlsPanel.classList.add('hidden');
@@ -220,11 +247,13 @@ class TranslateApp {
 
                 if (settings.fontOriginal) {
                     this.inputFontOriginal.value = settings.fontOriginal;
+                    this.originalBaseFontSize = parseFloat(settings.fontOriginal);
                     this.subtitleOverlay.style.setProperty('--original-font-size', `${settings.fontOriginal}rem`);
                     this.valFontOriginal.innerText = settings.fontOriginal;
                 }
                 if (settings.fontTranslated) {
                     this.inputFontTranslated.value = settings.fontTranslated;
+                    this.translatedBaseFontSize = parseFloat(settings.fontTranslated);
                     this.subtitleOverlay.style.setProperty('--translated-font-size', `${settings.fontTranslated}rem`);
                     this.valFontTranslated.innerText = settings.fontTranslated;
                 }
@@ -287,8 +316,9 @@ class TranslateApp {
         if (current) {
             current.classList.remove('current');
 
-            // Limit stack to 5 items to prevent DOM/screen overflow
-            while (this.subtitleOverlay.children.length > 5) {
+            // Limit stack to prevent DOM/screen overflow
+            const limit = parseInt(this.inputMaxPairs.value) || 2;
+            while (this.subtitleOverlay.children.length > limit) {
                 this.subtitleOverlay.firstChild?.remove();
             }
         }
@@ -312,6 +342,8 @@ class TranslateApp {
             audioSource: this.selectAudioSource.value,
             micDevice: this.selectMicDevice.value,
             googleApiKey: this.inputGoogleKey.value,
+            deepgramApiKey: this.inputDeepgramKey.value,
+            maxPairs: this.inputMaxPairs.value,
             menuHidden: this.controlsPanel.classList.contains('hidden'),
             historyHidden: this.topicHistoryPanel.classList.contains('hidden'),
             ttsEnabled: this.checkTts.checked
@@ -338,6 +370,8 @@ class TranslateApp {
             this.inputColorTranslatedFill,
             this.inputColorTranslatedStroke,
             this.inputGoogleKey,
+            this.inputDeepgramKey,
+            this.inputMaxPairs,
             this.inputMlxUrl,
             this.selectMlxMode,
             this.checkTts,
@@ -368,7 +402,7 @@ class TranslateApp {
             // Simplified to avoid re-writing the whole block as I am inside replace_file_content for a range
             // But wait, I'm replacing the whole block including initEventListeners, so I must include the full logic.
             // I will implement the full logic below as I am replacing the larger block.
-            if (this.selectEngine.value === 'mlx') {
+            if (this.selectEngine.value === 'mlx' || this.selectEngine.value === 'deepgram') {
                 try {
                     const baseUrl = this.inputMlxUrl.value.trim().replace(/\/ws$/, '').replace(/^ws/, 'http');
                     await fetch(`${baseUrl}/api/config/update`, {
@@ -390,6 +424,20 @@ class TranslateApp {
             this.valMaxDuration.innerText = this.inputMaxDuration.value;
         });
 
+        this.inputMaxPairs.addEventListener('input', () => {
+            this.valMaxPairs.innerText = this.inputMaxPairs.value;
+            // Immediate cleanup if limit is reduced
+            const limit = parseInt(this.inputMaxPairs.value) || 2;
+            while (this.subtitleOverlay.children.length > limit) {
+                const first = this.subtitleOverlay.firstChild as HTMLElement;
+                if (first && !first.classList.contains('current')) {
+                    first.remove();
+                } else {
+                    break;
+                }
+            }
+        });
+
         this.selectEngine.addEventListener('change', () => {
             this.updateSettingsVisibility();
             this.fetchServerConfig();
@@ -400,15 +448,29 @@ class TranslateApp {
 
         this.inputFontOriginal.addEventListener('input', () => {
             const val = this.inputFontOriginal.value;
+            this.originalBaseFontSize = parseFloat(val);
             this.subtitleOverlay.style.setProperty('--original-font-size', `${val}rem`);
             this.valFontOriginal.innerText = val;
+            
+            // Apply font size change to all existing original text elements
+            this.subtitleOverlay.querySelectorAll('.text-original').forEach((el) => {
+                this.adjustFontSize(el as HTMLElement, el.textContent || "", 'original');
+            });
+            
             this.saveSettings();
         });
 
         this.inputFontTranslated.addEventListener('input', () => {
             const val = this.inputFontTranslated.value;
+            this.translatedBaseFontSize = parseFloat(val);
             this.subtitleOverlay.style.setProperty('--translated-font-size', `${val}rem`);
             this.valFontTranslated.innerText = val;
+            
+            // Apply font size change to all existing translated text elements
+            this.subtitleOverlay.querySelectorAll('.text-translated').forEach((el) => {
+                this.adjustFontSize(el as HTMLElement, el.textContent || "", 'translated');
+            });
+            
             this.saveSettings();
         });
 
@@ -427,7 +489,7 @@ class TranslateApp {
 
         this.checkTts.addEventListener('change', () => {
             this.saveSettings();
-            if (this.selectEngine.value === 'mlx' && this.mlxSocket && this.mlxSocket.readyState === WebSocket.OPEN) {
+            if ((this.selectEngine.value === 'mlx' || this.selectEngine.value === 'deepgram') && this.mlxSocket && this.mlxSocket.readyState === WebSocket.OPEN) {
                 this.mlxSocket.send(JSON.stringify({
                     type: 'settings',
                     settings: {
@@ -441,8 +503,9 @@ class TranslateApp {
     private updateSettingsVisibility() {
         const engine = this.selectEngine.value;
         this.ollamaSettings.style.display = engine === 'ollama' ? 'block' : 'none';
-        this.mlxSettings.style.display = engine === 'mlx' ? 'block' : 'none';
+        this.mlxSettings.style.display = (engine === 'mlx' || engine === 'deepgram') ? 'block' : 'none';
         this.googleSettings.style.display = engine === 'google' ? 'block' : 'none';
+        this.deepgramSettings.style.display = engine === 'deepgram' ? 'block' : 'none';
     }
 
     private toggleControls() {
@@ -588,13 +651,13 @@ class TranslateApp {
         const engine = this.selectEngine.value;
 
         if (this.isRecognizing) {
-            if (engine === 'mlx') {
+            if (engine === 'mlx' || engine === 'deepgram') {
                 this.stopMlxRecognition();
             } else {
                 this.stopSpeech();
             }
         } else {
-            if (engine === 'mlx') {
+            if (engine === 'mlx' || engine === 'deepgram') {
                 this.startMlxRecognition();
             } else {
                 this.startSpeech();
@@ -651,19 +714,20 @@ class TranslateApp {
         const mode = this.selectMlxMode.value;
         const sourceLang = this.selectSourceLang.value;
         const targetLang = this.selectLang.value;
+        const asrEngine = this.selectEngine.value;
 
-        console.log(`Connecting to MLX Server: ${url}`);
-        this.updateStatus('active', 'MLX サーバー接続中...');
+        console.log(`Connecting to Backend Server: ${url} (Engine: ${asrEngine})`);
+        this.updateStatus('active', `${asrEngine === 'deepgram' ? 'Deepgram' : 'MLX'} サーバー接続中...`);
         this.setRecognitionUIActive('connecting');
 
         try {
             this.mlxSocket = new WebSocket(url);
 
             this.mlxSocket.onopen = () => {
-                console.log('MLX WebSocket connected');
+                console.log('Backend WebSocket connected');
                 this.isRecognizing = true;
                 this.setRecognitionUIActive(true);
-                this.updateStatus('active', 'MLX 音声認識実行中...');
+                this.updateStatus('active', `${asrEngine === 'deepgram' ? 'Deepgram' : 'MLX'} 音声認識実行中...`);
 
                 // Send start command
                 this.mlxSocket?.send(JSON.stringify({
@@ -672,7 +736,9 @@ class TranslateApp {
                         mode: mode,
                         source_lang: sourceLang,
                         target_lang: targetLang,
-                        tts_enabled: this.checkTts.checked
+                        tts_enabled: this.checkTts.checked,
+                        asr_engine: asrEngine,
+                        deepgram_api_key: this.inputDeepgramKey.value.trim()
                     }
                 }));
             };
@@ -696,28 +762,28 @@ class TranslateApp {
                     console.log('Keywords received:', data);
                     this.renderKeywords(data);
                 } else if (data.type === 'status') {
-                    console.log('MLX Status:', data.message);
+                    console.log('Backend Status:', data.message);
                 } else if (data.type === 'error') {
-                    this.updateStatus('error', `MLX エラー: ${data.message}`);
+                    this.updateStatus('error', `サーバーエラー: ${data.message}`);
                 }
             };
 
             this.mlxSocket.onclose = () => {
-                console.log('MLX WebSocket closed');
+                console.log('Backend WebSocket closed');
                 if (this.isRecognizing) {
                     this.stopMlxRecognition();
                 }
             };
 
             this.mlxSocket.onerror = (err) => {
-                console.error('MLX WebSocket error', err);
-                this.updateStatus('error', 'MLX 接続エラー');
+                console.log('Backend WebSocket error', err);
+                this.updateStatus('error', 'サーバー接続エラー');
                 this.stopMlxRecognition();
             };
 
         } catch (err) {
-            console.error('Failed to connect to MLX', err);
-            this.updateStatus('error', 'MLX 接続失敗');
+            console.error('Failed to connect to Backend Server', err);
+            this.updateStatus('error', 'サーバー接続失敗');
             this.setRecognitionUIActive(false);
         }
     }
@@ -1086,7 +1152,7 @@ class TranslateApp {
         }
 
         const textLength = text.length;
-        const baseFontSize = type === 'original' ? this.ORIGINAL_BASE_FONT_SIZE : this.TRANSLATED_BASE_FONT_SIZE;
+        const baseFontSize = type === 'original' ? this.originalBaseFontSize : this.translatedBaseFontSize;
         const maxChars = type === 'original' ? this.MAX_CHARS_ORIGINAL : this.MAX_CHARS_TRANSLATED;
 
         // Calculate scale factor based on text length

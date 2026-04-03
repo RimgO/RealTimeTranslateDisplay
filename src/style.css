@@ -57,10 +57,10 @@ body {
     left: 50%;
     transform: translateX(-50%);
     width: 90%;
-    height: 30vh;
-    /* Fixed height */
+    height: auto;
+    /* Grow with content */
     min-height: 150px;
-    max-height: 40vh;
+    max-height: 80vh;
     overflow: hidden;
     /* Hide overflow instead of scroll */
     display: flex;
