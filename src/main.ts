@@ -62,6 +62,9 @@ class TranslateApp {
     private topicHistoryPanel: HTMLElement;
     private historyList: HTMLElement;
 
+    private selectVideoSource: HTMLSelectElement;
+    private selectVideoDevice: HTMLSelectElement;
+    private videoDeviceSetting: HTMLElement;
     private selectAudioSource: HTMLSelectElement;
     private selectMicDevice: HTMLSelectElement;
     private systemAudioNote: HTMLElement;
@@ -86,6 +89,9 @@ class TranslateApp {
     private readonly MAX_CHARS_ORIGINAL = 100;
     private readonly MAX_CHARS_TRANSLATED = 80;
     private isTranslating: boolean = false;
+    private currentTranslationRequestID: number = 0;
+    private lastInterimTranslationTime: number = 0;
+    private readonly INTERIM_TRANSLATION_THROTTLE_MS = 800;
 
     private mlxSocket: WebSocket | null = null;
 
@@ -142,6 +148,9 @@ class TranslateApp {
         this.deepgramSettings = document.getElementById('deepgram-settings') as HTMLElement;
         this.inputDeepgramKey = document.getElementById('input-deepgram-key') as HTMLInputElement;
 
+        this.selectVideoSource = document.getElementById('select-video-source') as HTMLSelectElement;
+        this.selectVideoDevice = document.getElementById('select-video-device') as HTMLSelectElement;
+        this.videoDeviceSetting = document.getElementById('video-device-setting') as HTMLElement;
         this.selectAudioSource = document.getElementById('select-audio-source') as HTMLSelectElement;
         this.selectMicDevice = document.getElementById('select-mic-device') as HTMLSelectElement;
         this.systemAudioNote = document.getElementById('system-audio-note') as HTMLElement;
@@ -229,6 +238,11 @@ class TranslateApp {
                 if (settings.ollamaModel) this.inputOllamaModel.value = settings.ollamaModel;
                 if (settings.mlxUrl) this.inputMlxUrl.value = settings.mlxUrl;
                 if (settings.mlxMode) this.selectMlxMode.value = settings.mlxMode;
+                if (settings.videoSource) {
+                    this.selectVideoSource.value = settings.videoSource;
+                    this.updateVideoSourceUI();
+                }
+                if (settings.videoDevice) this.selectVideoDevice.value = settings.videoDevice;
                 if (settings.audioSource) {
                     this.selectAudioSource.value = settings.audioSource;
                     this.updateAudioSourceUI();
@@ -255,6 +269,7 @@ class TranslateApp {
                 }
                 this.checkTts.checked = settings.ttsEnabled !== false;
                 this.checkSplitView.checked = settings.splitViewEnabled === true;
+                this.updateSplitViewUI();
                 if (settings.selectEngine) this.selectEngine.value = settings.selectEngine;
 
                 if (settings.fontOriginal) {
@@ -270,18 +285,23 @@ class TranslateApp {
                     this.valFontTranslated.innerText = settings.fontTranslated;
                 }
 
+                if (settings.colorOriginalFill) this.inputColorOriginalFill.value = settings.colorOriginalFill;
+                if (settings.colorOriginalStroke) this.inputColorOriginalStroke.value = settings.colorOriginalStroke;
                 if (settings.colorTranslatedFill) this.inputColorTranslatedFill.value = settings.colorTranslatedFill;
                 if (settings.colorTranslatedStroke) this.inputColorTranslatedStroke.value = settings.colorTranslatedStroke;
 
                 if (settings.overlayBottom) {
                     this.inputOverlayBottom.value = settings.overlayBottom;
                     this.valOverlayBottom.innerText = settings.overlayBottom;
-                    this.subtitleOverlay.style.setProperty('--overlay-bottom', `${settings.overlayBottom}%`);
+                    const valStr = `${settings.overlayBottom}%`;
+                    this.subtitleOverlay.style.setProperty('--overlay-bottom', valStr);
+                    this.subtitleOverlay.style.maxHeight = valStr;
                 } else {
                     // Default 20%
                     this.inputOverlayBottom.value = "20";
                     this.valOverlayBottom.innerText = "20";
                     this.subtitleOverlay.style.setProperty('--overlay-bottom', "20%");
+                    this.subtitleOverlay.style.maxHeight = "20%";
                 }
 
                 // Apply colors
@@ -302,6 +322,36 @@ class TranslateApp {
             this.subtitleOverlay.style.setProperty('--translated-fill', this.inputColorTranslatedFill.value);
             this.subtitleOverlay.style.setProperty('--translated-stroke', this.inputColorTranslatedStroke.value);
         }
+    }
+
+    private truncateText(text: string): string {
+        if (!text) return "";
+        const limit = parseInt(this.inputMaxPairs.value) || 2;
+        
+        // 1. Try splitting by sentence terminators
+        let segments = (text.match(/[^。\.\?\!\n]+[。\.\?\!\n]?/g) || [text]) as string[];
+        
+        // 2. If we have too few segments but the text is long, split by char count to respect "Display Limit"
+        if (segments.length < limit && text.length > 50 * limit) {
+             const chunkSize = Math.floor(text.length / limit) || 50;
+             segments = [];
+             for (let i = 0; i < text.length; i += chunkSize) {
+                 segments.push(text.slice(i, i + chunkSize));
+             }
+        }
+        
+        if (segments.length > limit) {
+             segments = segments.slice(-limit);
+        }
+        
+        let result = segments.join("").trim();
+        
+        // 3. Final character limit safety valve
+        const charLimit = 80 * limit; 
+        if (result.length > charLimit) {
+            result = "..." + result.slice(-charLimit);
+        }
+        return result;
     }
 
     private getOrCreateCurrentSubtitlePair() {
@@ -362,6 +412,8 @@ class TranslateApp {
             colorTranslatedStroke: this.inputColorTranslatedStroke.value,
             audioSource: this.selectAudioSource.value,
             micDevice: this.selectMicDevice.value,
+            videoSource: this.selectVideoSource.value,
+            videoDevice: this.selectVideoDevice.value,
             googleApiKey: this.inputGoogleKey.value,
             deepgramApiKey: this.inputDeepgramKey.value,
             maxPairs: this.inputMaxPairs.value,
@@ -399,14 +451,20 @@ class TranslateApp {
             this.selectMlxMode,
             this.checkTts,
             this.checkSplitView,
-            this.selectEngine,
             this.inputMaxDuration,
-            this.inputOverlayBottom
+            this.inputOverlayBottom,
+            this.selectAudioSource,
+            this.selectMicDevice,
+            this.selectVideoSource,
+            this.selectVideoDevice
         ];
 
         saveInputs.forEach(input => {
             input.addEventListener('change', () => this.saveSettings());
         });
+
+        this.selectAudioSource.addEventListener('change', () => this.updateAudioSourceUI());
+        this.selectVideoSource.addEventListener('change', () => this.updateVideoSourceUI());
 
         // Color inputs: live update
         const colorInputs = [
@@ -462,19 +520,14 @@ class TranslateApp {
         this.inputOverlayBottom.addEventListener('input', () => {
             const val = this.inputOverlayBottom.value;
             this.valOverlayBottom.innerText = val;
-            this.subtitleOverlay.style.setProperty('--overlay-bottom', `${val}%`);
+            const valStr = `${val}%`;
+            this.subtitleOverlay.style.setProperty('--overlay-bottom', valStr);
+            this.subtitleOverlay.style.maxHeight = valStr;
             this.saveSettings();
         });
 
         this.checkSplitView.addEventListener('change', () => {
-            const isSplit = this.checkSplitView.checked;
-            this.subtitleOverlay.querySelectorAll('.subtitle-pair').forEach(el => {
-                if (isSplit) {
-                    el.classList.add('split');
-                } else {
-                    el.classList.remove('split');
-                }
-            });
+            this.updateSplitViewUI();
             this.saveSettings();
         });
 
@@ -523,6 +576,15 @@ class TranslateApp {
             this.updateAudioSourceUI();
             this.saveSettings();
         });
+        
+        this.selectVideoSource.addEventListener('change', () => {
+            this.updateVideoSourceUI();
+            this.saveSettings();
+        });
+
+        this.selectVideoDevice.addEventListener('change', () => {
+            this.saveSettings();
+        });
 
         this.selectMicDevice.addEventListener('change', () => {
             this.saveSettings();
@@ -569,19 +631,36 @@ class TranslateApp {
         (document.getElementById('mic-device-setting') as HTMLElement).style.display = isSystem ? 'none' : 'block';
     }
 
+    private updateVideoSourceUI() {
+        const isCamera = this.selectVideoSource.value === 'camera';
+        this.videoDeviceSetting.style.display = isCamera ? 'block' : 'none';
+        this.btnCapture.innerHTML = isCamera ? '<span class="icon">📷</span> カメラ開始' : '<span class="icon">📺</span> 画面キャプチャ開始';
+    }
+
     private async initDeviceList() {
         try {
             // Request permission to list devices labels
-            await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => { });
+            await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).catch(() => { });
             const devices = await navigator.mediaDevices.enumerateDevices();
+            
+            // Audio Devices
             const audioDevices = devices.filter(d => d.kind === 'audioinput');
-
             this.selectMicDevice.innerHTML = '<option value="default">規定のデバイス</option>';
             audioDevices.forEach(device => {
                 const opt = document.createElement('option');
                 opt.value = device.deviceId;
                 opt.text = device.label || `マイク ${this.selectMicDevice.length}`;
                 this.selectMicDevice.appendChild(opt);
+            });
+
+            // Video Devices
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            this.selectVideoDevice.innerHTML = '<option value="default">規定のカメラ</option>';
+            videoDevices.forEach(device => {
+                const opt = document.createElement('option');
+                opt.value = device.deviceId;
+                opt.text = device.label || `カメラ ${this.selectVideoDevice.length}`;
+                this.selectVideoDevice.appendChild(opt);
             });
         } catch (err) {
             console.warn('Failed to enumerate devices', err);
@@ -590,14 +669,28 @@ class TranslateApp {
 
     private async startCapture() {
         try {
-            this.stream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    displaySurface: "window",
-                },
-                audio: true
-            });
+            const isCamera = this.selectVideoSource.value === 'camera';
+            
+            if (isCamera) {
+                const videoConstraints: MediaTrackConstraints | boolean = this.selectVideoDevice.value !== 'default'
+                    ? { deviceId: { exact: this.selectVideoDevice.value } }
+                    : true;
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: videoConstraints,
+                    audio: false // Audio is handled separately or via another stream
+                });
+                this.updateStatus('active', 'カメラを使用中');
+            } else {
+                this.stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        displaySurface: "window",
+                    },
+                    audio: true
+                });
+                this.updateStatus('active', '画面をキャプチャ中');
+            }
+
             this.videoElement.srcObject = this.stream;
-            this.updateStatus('active', '画面をキャプチャ中');
 
             // If audio source is system, start visualizer with the capture stream
             if (this.selectAudioSource.value === 'system' && this.stream.getAudioTracks().length > 0) {
@@ -619,8 +712,8 @@ class TranslateApp {
                 };
             }
         } catch (err) {
-            console.error("Error capturing screen: ", err);
-            alert("画面キャプチャに失敗しました。");
+            console.error("Error starting capture: ", err);
+            alert("キャプチャの開始に失敗しました。");
         }
     }
 
@@ -659,13 +752,19 @@ class TranslateApp {
                     this.detectAndSwapLanguage(currentText);
 
                     const { orig, trans } = this.getOrCreateCurrentSubtitlePair();
-                    orig.innerText = currentText;
-                    this.adjustFontSize(orig, currentText, 'original');
+                    const displayOrig = this.truncateText(currentText);
+                    orig.innerText = displayOrig;
+                    this.adjustFontSize(orig, displayOrig, 'original');
 
-                    // Only translate if it's the final transcript or if we haven't translated in a while
-                    // To prevent overwhelming Ollama
-                    if (finalTranscript || !this.isTranslating) {
-                        this.translateText(currentText, trans);
+                    // Translation logic with throttling for interim results
+                    const now = Date.now();
+                    const shouldTranslateInterim = !finalTranscript && !this.isTranslating && (now - this.lastInterimTranslationTime > this.INTERIM_TRANSLATION_THROTTLE_MS);
+                    
+                    if (finalTranscript || shouldTranslateInterim) {
+                        if (!finalTranscript) {
+                            this.lastInterimTranslationTime = now;
+                        }
+                        this.translateText(displayOrig, trans);
                         if (finalTranscript) {
                             this.lastTranslatedText = finalTranscript;
                             // Trigger keyword extraction via backend API
@@ -717,6 +816,12 @@ class TranslateApp {
         if (!this.recognition) return;
         try {
             this.recognition.lang = this.selectSourceLang.value === 'ja' ? 'ja-JP' : (this.selectSourceLang.value === 'en' ? 'en-US' : this.selectSourceLang.value);
+            
+            // Clear previous subtitles and reset state
+            this.subtitleOverlay.innerHTML = '';
+            this.lastTranslatedText = '';
+            this.lastDetectionTime = 0;
+
             this.recognition.start();
             this.isRecognizing = true;
             this.setRecognitionUIActive(true);
@@ -737,7 +842,12 @@ class TranslateApp {
         this.recognition.stop();
         this.isRecognizing = false;
         this.setRecognitionUIActive(false);
-        this.updateStatus('active', this.stream ? '画面キャプチャ中' : '準備完了');
+        
+        let statusMessage = '準備完了';
+        if (this.stream) {
+            statusMessage = this.selectVideoSource.value === 'camera' ? 'カメラを使用中' : '画面キャプチャ中';
+        }
+        this.updateStatus('active', statusMessage);
         this.stopMicVisualizer();
     }
 
@@ -767,6 +877,11 @@ class TranslateApp {
         console.log(`Connecting to Backend Server: ${url} (Engine: ${asrEngine})`);
         this.updateStatus('active', `${asrEngine === 'deepgram' ? 'Deepgram' : 'MLX'} サーバー接続中...`);
         this.setRecognitionUIActive('connecting');
+        
+        // Clear previous subtitles and reset state
+        this.subtitleOverlay.innerHTML = '';
+        this.lastTranslatedText = '';
+        this.lastDetectionTime = 0;
 
         try {
             this.mlxSocket = new WebSocket(url);
@@ -798,15 +913,18 @@ class TranslateApp {
                     this.detectAndSwapLanguage(data.text);
 
                     const { orig } = this.getOrCreateCurrentSubtitlePair();
-                    orig.innerText = data.text;
-                    this.adjustFontSize(orig, data.text, 'original');
+                    const displayOrig = this.truncateText(data.text);
+                    orig.innerText = displayOrig;
+                    this.adjustFontSize(orig, displayOrig, 'original');
                 } else if (data.type === 'translated') {
                     const { orig, trans } = this.getOrCreateCurrentSubtitlePair();
-                    trans.innerText = data.text;
-                    this.adjustFontSize(trans, data.text, 'translated');
+                    const displayTrans = this.truncateText(data.text);
+                    trans.innerText = displayTrans;
+                    this.adjustFontSize(trans, displayTrans, 'translated');
                     if (data.source_text) {
-                        orig.innerText = data.source_text;
-                        this.adjustFontSize(orig, data.source_text, 'original');
+                        const displayOrig = this.truncateText(data.source_text);
+                        orig.innerText = displayOrig;
+                        this.adjustFontSize(orig, displayOrig, 'original');
                     }
                     this.commitCurrentSubtitle();
                 } else if (data.type === 'keywords') {
@@ -1068,6 +1186,7 @@ class TranslateApp {
             this.translationAbortController.abort();
         }
         this.translationAbortController = new AbortController();
+        const requestID = ++this.currentTranslationRequestID;
 
         this.isTranslating = true;
         try {
@@ -1102,7 +1221,9 @@ class TranslateApp {
             console.error('Google Translate Error:', err);
             elementToUpdate.innerText = `(Google翻訳エラー: ${err.message})`;
         } finally {
-            this.isTranslating = false;
+            if (this.currentTranslationRequestID === requestID) {
+                this.isTranslating = false;
+            }
         }
     }
 
@@ -1110,11 +1231,11 @@ class TranslateApp {
         const baseUrl = this.inputOllamaUrl.value.trim().replace(/\/$/, '');
         const model = this.inputOllamaModel.value.trim();
 
-        // Cancel previous request if still running
         if (this.translationAbortController) {
             this.translationAbortController.abort();
         }
         this.translationAbortController = new AbortController();
+        const requestID = ++this.currentTranslationRequestID;
 
         const langNames: Record<string, string> = {
             'en': 'English',
@@ -1177,7 +1298,9 @@ class TranslateApp {
 
             elementToUpdate.innerText = errorMessage;
         } finally {
-            this.isTranslating = false;
+            if (this.currentTranslationRequestID === requestID) {
+                this.isTranslating = false;
+            }
         }
     }
 
@@ -1349,7 +1472,6 @@ class TranslateApp {
 
                     // Add an alpha channel of 0.95 for slight blending
                     const strokeColor = `rgba(${oppR}, ${oppG}, ${oppB}, 0.95)`;
-
                     if (this.subtitleOverlay) {
                         this.subtitleOverlay.style.setProperty('--original-stroke', strokeColor);
                         this.subtitleOverlay.style.setProperty('--translated-stroke', strokeColor);
@@ -1357,8 +1479,19 @@ class TranslateApp {
                 }
             }
         } catch (e) {
-            // Can fail if cross-origin or video not fully loaded, ignore cleanly
+            // ignore
         }
+    }
+
+    private updateSplitViewUI() {
+        const isSplit = this.checkSplitView.checked;
+        this.subtitleOverlay.querySelectorAll('.subtitle-pair').forEach(el => {
+            if (isSplit) {
+                el.classList.add('split');
+            } else {
+                el.classList.remove('split');
+            }
+        });
     }
 }
 

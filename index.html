@@ -76,6 +76,21 @@
 
                 <div class="settings-group">
                     <div class="setting-item">
+                        <label>ビデオソース (Video Source)</label>
+                        <select id="select-video-source">
+                            <option value="screen">画面キャプチャ (Screen Capture)</option>
+                            <option value="camera">システムカメラ (System Camera)</option>
+                        </select>
+                    </div>
+
+                    <div id="video-device-setting" class="setting-item" style="display: none;">
+                        <label>カメラ選択 (Camera Selection)</label>
+                        <select id="select-video-device">
+                            <option value="default">規定のカメラ</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
                         <label>音声ソース</label>
                         <select id="select-audio-source">
                             <option value="mic">PCマイクのみ (Microphone Only)</option>
@@ -113,7 +128,7 @@
                     <div id="mlx-settings" class="setting-item" style="display: none;">
                         <div class="sub-setting">
                             <label>Server URL</label>
-                            <input type="text" id="input-mlx-url" value="ws://localhost:8002/ws">
+                            <input type="text" id="input-mlx-url" value="ws://localhost:8000/ws">
                         </div>
                         <div class="sub-setting">
                             <label>Mode</label>
