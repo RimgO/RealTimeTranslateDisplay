@@ -1248,14 +1248,16 @@ class TranslateApp {
 
         this.isTranslating = true;
         try {
-            const response = await fetch(`${baseUrl}/api/generate`, {
+            const response = await fetch(`${baseUrl}/api/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     model: model,
-                    prompt: prompt,
+                    messages: [
+                        { role: 'user', content: prompt }
+                    ],
                     stream: false
                 }),
                 signal: this.translationAbortController.signal
@@ -1277,8 +1279,9 @@ class TranslateApp {
             }
 
             const data = await response.json();
-            const translatedText = data.response.trim();
+            const translatedText = data.message.content.trim();
             elementToUpdate.innerText = translatedText;
+            this.adjustFontSize(elementToUpdate, translatedText, 'translated');
         } catch (err: any) {
             if (err.name === 'AbortError') return;
 

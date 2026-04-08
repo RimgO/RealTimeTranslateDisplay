@@ -16,6 +16,7 @@ import threading
 import shutil
 import os
 from pathlib import Path
+from datetime import datetime
 from typing import Dict, List, Set, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -579,79 +580,81 @@ def run_recognition_system(config_path: str = "config.yaml",
                           deepgram_api_key: Optional[str] = None):
     """
     音声認識システムを別スレッドで起動
-
-    Args:
-        config_path: 設定ファイルのパス
-        source_lang: 音源言語
-        target_lang: 翻訳先言語
-        web_ui_url: Web UIサーバーのURL
-        mode: 動作モード ('translation' or 'transcript')
-        tts_enabled: TTS有効化フラグ
     """
     try:
         # モードに応じてメインスクリプトを選択
         import importlib.util
+        base_path = Path(__file__).parent
         if mode == "transcript":
-            script_path = "main_transcription_only.py"
+            script_path = str(base_path / "main_transcription_only.py")
         else:
-            script_path = "main_with_translation.py"
+            script_path = str(base_path / "main_with_translation.py")
+
+        # インポートを確実にするためにディレクトリをsys.pathに追加
+        if str(base_path) not in sys.path:
+            sys.path.insert(0, str(base_path))
 
         spec = importlib.util.spec_from_file_location("main_module", script_path)
         if spec and spec.loader:
             main_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(main_module)
-
-            # コマンドライン引数を構築
-            sys.argv = [script_path, "--web-ui", "--web-ui-url", web_ui_url]
-            if config_path:
-                sys.argv.extend(["--config", config_path])
-            if source_lang:
-                sys.argv.extend(["--source-lang", source_lang])
-            if mode == "translation" and target_lang:
-                sys.argv.extend(["--target-lang", target_lang])
             
-            if mode == "translation":
-                if tts_enabled:
-                    sys.argv.append("--tts-enabled")
-                else:
-                    sys.argv.append("--no-tts")
-            
-            if asr_engine and asr_engine != 'mlx': # 'mlx' is just the historical name for the original whisper mode in the UI
-                sys.argv.extend(["--asr-engine", asr_engine])
-            
-            if deepgram_api_key:
-                sys.argv.extend(["--deepgram-api-key", deepgram_api_key])
+            # Explicitly call main if it's there
+            if hasattr(main_module, 'main'):
+                # 必要なコマンドライン引数を事前にセット
+                sys.argv = [script_path, "--web-ui", "--web-ui-url", web_ui_url]
+                if config_path:
+                    sys.argv.extend(["--config", config_path])
+                if source_lang:
+                    sys.argv.extend(["--source-lang", source_lang])
+                if mode == "translation" and target_lang:
+                    sys.argv.extend(["--target-lang", target_lang])
+                
+                # TTS設定
+                if mode == "translation":
+                    if tts_enabled:
+                        sys.argv.append("--tts-enabled")
+                    else:
+                        sys.argv.append("--no-tts")
+                
+                # ASRエンジンとAPIキーの設定
+                if asr_engine and asr_engine != 'mlx':
+                    sys.argv.extend(["--asr-engine", asr_engine])
+                if deepgram_api_key:
+                    sys.argv.extend(["--deepgram-api-key", deepgram_api_key])
+                
+                logger.info(f"Starting recognition system via {script_path}...")
 
-            # メイン関数を実行（ブロッキング）
-            # システムインスタンスは別スレッドで定期的にチェック
-            def check_and_store_instance():
-                """定期的に_system_instanceと_config_manager_instanceをチェックしてserver_stateに保存"""
-                import time
-                system_captured = False
-                config_captured = False
-                for _ in range(50):  # 最大5秒待機
-                    time.sleep(0.1)
-                    if not system_captured and hasattr(main_module, '_system_instance') and main_module._system_instance:
-                        server_state.recognition_system = main_module._system_instance
-                        logger.info("System instance captured for stop control")
-                        system_captured = True
-                    if not config_captured and hasattr(main_module, '_config_manager_instance') and main_module._config_manager_instance:
-                        server_state.config_manager = main_module._config_manager_instance
-                        logger.info("Config manager instance captured for reload support")
-                        config_captured = True
-                    if system_captured and config_captured:
-                        break
+                # インスタンスキャプチャ用スレッドを開始
+                def check_and_store_instance():
+                    import time
+                    system_captured = False
+                    config_captured = False
+                    for _ in range(50):  # 最大5秒待機
+                        time.sleep(0.1)
+                        if not system_captured and hasattr(main_module, '_system_instance') and main_module._system_instance:
+                            server_state.recognition_system = main_module._system_instance
+                            logger.info("System instance captured for stop control")
+                            system_captured = True
+                        if not config_captured and hasattr(main_module, '_config_manager_instance') and main_module._config_manager_instance:
+                            server_state.config_manager = main_module._config_manager_instance
+                            logger.info("Config manager instance captured for reload support")
+                            config_captured = True
+                        if system_captured and config_captured:
+                            break
 
-            # インスタンスキャプチャ用スレッドを開始
-            capture_thread = threading.Thread(target=check_and_store_instance, daemon=True)
-            capture_thread.start()
+                capture_thread = threading.Thread(target=check_and_store_instance, daemon=True)
+                capture_thread.start()
 
-            # メイン関数を実行（ブロッキング）
-            main_module.main()
+                # メイン関数を実行（ブロッキング）
+                main_module.main()
+            else:
+                logger.error(f"Script {script_path} does not have a main() function")
+                
     except KeyboardInterrupt:
         logger.info("Recognition system interrupted")
     except Exception as e:
-        logger.info(f"Error starting recognition system: {e}")
+        logger.error(f"Error starting recognition system: {e}")
         import traceback
         traceback.print_exc()
     finally:
@@ -659,6 +662,7 @@ def run_recognition_system(config_path: str = "config.yaml",
         server_state.is_recognition_running = False
         server_state.recognition_system = None
         logger.info("Recognition system stopped")
+
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000,

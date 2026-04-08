@@ -5,6 +5,17 @@ from typing import Optional
 def setup_model_args(parser: argparse.ArgumentParser) -> None:
     """音声認識モデル関連の引数を設定"""
     model_group = parser.add_argument_group('ASR Model Settings')
+    model_group.add_argument(
+        "--asr-engine",
+        type=str,
+        choices=["whisper", "deepgram"],
+        help="ASR engine to use (default: from config)"
+    )
+    model_group.add_argument(
+        "--deepgram-api-key",
+        type=str,
+        help="Deepgram API Key"
+    )
     if sys.platform == 'darwin':
         model_group.add_argument(
             "--model-path",

@@ -21,6 +21,7 @@ from config_manager import ConfigManager
 from audio.capture import AudioCapture
 from audio.processing import AudioProcessing
 from recognition.speech_recognition import SpeechRecognition
+from recognition.deepgram_recognition import DeepgramRecognition
 from translation.translator import Translation
 from utils.resource_manager import ResourceManager
 
@@ -182,6 +183,16 @@ def parse_arguments():
         type=str,
         help="用語集のJSON文字列 (例: '{\"Hello\":\"Konichiwa\"}')"
     )
+    parser.add_argument(
+        "--asr-engine",
+        type=str,
+        help="利用するASRエンジン ('whisper' または 'deepgram')"
+    )
+    parser.add_argument(
+        "--deepgram-api-key",
+        type=str,
+        help="DeepgramのAPIキー"
+    )
 
     return parser.parse_args()
 
@@ -216,6 +227,19 @@ def main():
         _config_manager_instance = config
 
         # コマンドライン引数による上書き（公式 API を使用）
+        if getattr(args, 'asr_engine', None):
+            config.set_asr_engine(args.asr_engine)
+            logger.info(f"   ASRエンジンを上書き: {args.asr_engine}")
+
+        if getattr(args, 'deepgram_api_key', None):
+            if 'models' not in config._config:
+                config._config['models'] = {}
+            if 'asr' not in config._config['models']:
+                config._config['models']['asr'] = {}
+            if 'deepgram' not in config._config['models']['asr']:
+                config._config['models']['asr']['deepgram'] = {}
+            config._config['models']['asr']['deepgram']['api_key'] = args.deepgram_api_key
+
         if args.output_dir:
             config.set_output_dir(args.output_dir)
             logger.info(f"   出力ディレクトリを上書き: {args.output_dir}")
@@ -349,16 +373,29 @@ def main():
                 logger.warning(f" Web UI Bridge initialization failed: {e}")
                 web_ui = None
 
-        speech_recognition = SpeechRecognition(
-            config.audio,
-            processing_queue,
-            translation_queue,
-            config,  # ConfigManagerを渡す
-            config.language,
-            debug=debug_mode,
-            web_ui=web_ui,  # Web UIブリッジを渡す
-            mlx_lock=_mlx_lock  # MLX競合防止用ロック
-        )
+        asr_engine = config.get_model_config('asr').engine
+        if asr_engine == 'deepgram':
+            speech_recognition = DeepgramRecognition(
+                config.audio,
+                processing_queue,
+                translation_queue,
+                config,
+                config.language,
+                debug=debug_mode,
+                web_ui=web_ui,
+                mlx_lock=_mlx_lock
+            )
+        else:
+            speech_recognition = SpeechRecognition(
+                config.audio,
+                processing_queue,
+                translation_queue,
+                config,  # ConfigManagerを渡す
+                config.language,
+                debug=debug_mode,
+                web_ui=web_ui,  # Web UIブリッジを渡す
+                mlx_lock=_mlx_lock  # MLX競合防止用ロック
+            )
         # TTS初期化（オプショナル）
         tts = None
         # Web UI連携時は後からトグルできるように、設定が無効でもインスタンスだけは作成しておく

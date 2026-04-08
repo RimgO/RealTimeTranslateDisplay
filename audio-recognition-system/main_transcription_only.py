@@ -19,6 +19,7 @@ from config_manager import ConfigManager
 from audio.capture import AudioCapture
 from audio.processing import AudioProcessing
 from recognition.speech_recognition import SpeechRecognition
+from recognition.deepgram_recognition import DeepgramRecognition
 from utils.resource_manager import ResourceManager
 
 # Web UI Bridge (オプショナル)
@@ -142,6 +143,16 @@ def parse_arguments():
         default="http://localhost:8000",
         help="Web UIサーバーのURL"
     )
+    parser.add_argument(
+        "--asr-engine",
+        type=str,
+        help="利用するASRエンジン ('whisper' または 'deepgram')"
+    )
+    parser.add_argument(
+        "--deepgram-api-key",
+        type=str,
+        help="DeepgramのAPIキー"
+    )
 
     return parser.parse_args()
 
@@ -174,6 +185,19 @@ def main():
         )
         
         # コマンドライン引数による上書き（公式 API を使用）
+        if getattr(args, 'asr_engine', None):
+            config.set_asr_engine(args.asr_engine)
+            logger.info(f"   ASRエンジンを上書き: {args.asr_engine}")
+
+        if getattr(args, 'deepgram_api_key', None):
+            if 'models' not in config._config:
+                config._config['models'] = {}
+            if 'asr' not in config._config['models']:
+                config._config['models']['asr'] = {}
+            if 'deepgram' not in config._config['models']['asr']:
+                config._config['models']['asr']['deepgram'] = {}
+            config._config['models']['asr']['deepgram']['api_key'] = args.deepgram_api_key
+
         if args.output_dir:
             config.set_output_dir(args.output_dir)
             logger.info(f"   出力ディレクトリを上書き: {args.output_dir}")
@@ -251,15 +275,28 @@ def main():
         # 直接AudioConfigデータクラスを渡す
         audio_capture = AudioCapture(config.audio, audio_queue, config.audio)
         audio_processing = AudioProcessing(config.audio, audio_queue, processing_queue)
-        speech_recognition = SpeechRecognition(
-            config.audio,
-            processing_queue,
-            None,  # 翻訳なし
-            config,  # ConfigManagerを渡す
-            config.language,
-            debug=debug_mode,
-            web_ui=web_ui  # Web UI Bridge
-        )
+        
+        asr_engine = config.get_model_config('asr').engine
+        if asr_engine == 'deepgram':
+            speech_recognition = DeepgramRecognition(
+                config.audio,
+                processing_queue,
+                None,  # 翻訳なし
+                config,
+                config.language,
+                debug=debug_mode,
+                web_ui=web_ui
+            )
+        else:
+            speech_recognition = SpeechRecognition(
+                config.audio,
+                processing_queue,
+                None,  # 翻訳なし
+                config,  # ConfigManagerを渡す
+                config.language,
+                debug=debug_mode,
+                web_ui=web_ui  # Web UI Bridge
+            )
         
         # =====================================
         # システムの起動

@@ -1,5 +1,9 @@
 models:
   asr:
+    engine: whisper
+    deepgram:
+      api_key: ''
+      model: nova-2
     darwin:
       model_path: mlx-community/whisper-large-v3-turbo
       model_size: large-v3-turbo

@@ -152,7 +152,16 @@
                         </div>
                         <div class="sub-setting">
                             <label>モデル名</label>
-                            <input type="text" id="input-ollama-model" value="gemma2:2b">
+                            <input type="text" id="input-ollama-model" value="gemma4:e4b" list="ollama-model-list">
+                            <datalist id="ollama-model-list">
+                                <option value="gemma4:e4b">
+                                <option value="gemma2:2b">
+                                <option value="gemma2:9b">
+                                <option value="llama3.1:8b">
+                                <option value="llama3.2:3b">
+                                <option value="phi3:mini">
+                                <option value="mistral:7b">
+                            </datalist>
                         </div>
                     </div>
 
