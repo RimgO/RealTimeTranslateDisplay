@@ -2,6 +2,32 @@
 
 An audio recognition and real-time translation system built to efficiently transcribe and translate audio input. This repository provides scripts for seamless audio processing with minimal setup, making it ideal for both researchers and developers.
 
+## クイックスタート (Gemma 4 / Ollama 連携)
+
+最新の Gemma 4 モデルを利用してリアルタイム翻訳を行うための推奨手順です。
+
+### 1. Ollama の準備
+ローカルで Ollama を起動し、モデルをプルしておきます。
+```bash
+ollama pull gemma4:e4b
+```
+
+### 2. システムの起動
+バックエンドサーバーを起動します。現在の設定ではデフォルトで Ollama API を使用するようになっています。
+```bash
+cd audio-recognition-system
+python web_server.py --start-recognition
+```
+
+### 3. ブラウザでの操作
+1. `http://localhost:5173` (Frontend) または `http://localhost:8000` (Backend UI) を開きます。
+2. **翻訳エンジン** で `Ollama (Local LLM)` を選択します。
+3. **モデル名** のドロップダウン（入力欄をクリック）から、使用したいモデル（例: `gemma4:e4b` や `translategemma:12b`）を選択します。リストは Ollama から自動取得されます。
+4. **「音声認識開始」** をクリックします。
+
+### 注意事項
+- **MLX ローカルロード**: Gemma 4 などの最新アーキテクチャのモデルを `mlx-lm` で直接ロードしようとすると `Model type not supported` エラーが出ることがあります。その場合は、上記のように Ollama 経由（APIモード）を利用することで安定して動作します。
+
 ## Table of Contents
 
 - [Audio Recognition System](#audio-recognition-system)

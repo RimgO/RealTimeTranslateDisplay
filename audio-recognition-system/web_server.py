@@ -165,6 +165,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     source_lang = settings.get("source_lang") or server_state.config.get("source_lang")
                     target_lang = settings.get("target_lang") or server_state.config.get("target_lang")
                     asr_engine = settings.get("asr_engine") or server_state.config.get("asr_engine")
+                    translation_engine = settings.get("translation_engine")
+                    ollama_url = settings.get("ollama_url")
+                    ollama_model = settings.get("ollama_model")
                     deepgram_api_key = settings.get("deepgram_api_key")
                     tts_enabled = settings.get("tts_enabled")
                     if tts_enabled is None:
@@ -182,7 +185,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     web_ui_url = f"http://localhost:{server_state.port}"
                     recognition_thread = threading.Thread(
                         target=run_recognition_system,
-                        args=("config.yaml", source_lang, target_lang, web_ui_url, mode, tts_enabled, asr_engine, deepgram_api_key),
+                        args=("config.yaml", source_lang, target_lang, web_ui_url, mode, tts_enabled, asr_engine, deepgram_api_key, translation_engine, ollama_url, ollama_model),
                         daemon=True
                     )
                     recognition_thread.start()
@@ -577,7 +580,10 @@ def run_recognition_system(config_path: str = "config.yaml",
                           mode: str = "translation",
                           tts_enabled: bool = True,
                           asr_engine: Optional[str] = None,
-                          deepgram_api_key: Optional[str] = None):
+                          deepgram_api_key: Optional[str] = None,
+                          translation_engine: Optional[str] = None,
+                          ollama_url: Optional[str] = None,
+                          ollama_model: Optional[str] = None):
     """
     音声認識システムを別スレッドで起動
     """
@@ -622,6 +628,14 @@ def run_recognition_system(config_path: str = "config.yaml",
                     sys.argv.extend(["--asr-engine", asr_engine])
                 if deepgram_api_key:
                     sys.argv.extend(["--deepgram-api-key", deepgram_api_key])
+                
+                # Translation engine settings
+                if translation_engine:
+                    sys.argv.extend(["--translation-engine", translation_engine])
+                if ollama_url:
+                    sys.argv.extend(["--ollama-url", ollama_url])
+                if ollama_model:
+                    sys.argv.extend(["--ollama-model", ollama_model])
                 
                 logger.info(f"Starting recognition system via {script_path}...")
 

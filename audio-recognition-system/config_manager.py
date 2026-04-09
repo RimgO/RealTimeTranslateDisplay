@@ -733,6 +733,41 @@ class ConfigManager:
         if 'asr' not in self._config['models']:
             self._config['models']['asr'] = {}
         self._config['models']['asr']['engine'] = engine
+        self._models = {} # キャッシュをクリア
+
+    def set_translation_api(self, enabled: bool, base_url: str = None, model: str = None) -> None:
+        """
+        翻訳API設定を更新（Ollama等）
+        """
+        if 'models' not in self._config:
+            self._config['models'] = {}
+        if 'translation' not in self._config['models']:
+            self._config['models']['translation'] = {}
+        if 'api' not in self._config['models']['translation']:
+            self._config['models']['translation']['api'] = {}
+            
+        self._config['models']['translation']['api']['enabled'] = enabled
+        if base_url:
+            self._config['models']['translation']['api']['base_url'] = base_url
+        if model:
+            self._config['models']['translation']['api']['model'] = model
+            
+        # キャッシュをクリア
+        self._models = {}
+
+    def set_google_translate_enabled(self, enabled: bool) -> None:
+        """
+        Google翻訳有効化を設定
+        """
+        if 'models' not in self._config:
+            self._config['models'] = {}
+        if 'translation' not in self._config['models']:
+            self._config['models']['translation'] = {}
+        if 'google' not in self._config['models']['translation']:
+            self._config['models']['translation']['google'] = {}
+        
+        self._config['models']['translation']['google']['enabled'] = enabled
+        self._models = {} # キャッシュをクリア
 
     def set_tts_enabled(self, enabled: bool) -> None:
         """

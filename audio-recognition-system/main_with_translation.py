@@ -193,6 +193,21 @@ def parse_arguments():
         type=str,
         help="DeepgramのAPIキー"
     )
+    parser.add_argument(
+        "--translation-engine",
+        type=str,
+        help="利用する翻訳エンジン ('ollama', 'google', 'mlx'等)"
+    )
+    parser.add_argument(
+        "--ollama-url",
+        type=str,
+        help="OllamaのAPI URL"
+    )
+    parser.add_argument(
+        "--ollama-model",
+        type=str,
+        help="Ollamaで使用するモデル名"
+    )
 
     return parser.parse_args()
 
@@ -277,6 +292,19 @@ def main():
             config.set_tts_enabled(args.tts_enabled)
             logger.info(f"   TTS有効化を上書き: {'有効' if args.tts_enabled else '無効'}")
         
+        # 翻訳エンジンの設定 (Ollama等)
+        if getattr(args, 'translation_engine', None) == 'ollama':
+            url = args.ollama_url or "http://localhost:11434/v1"
+            # OpenAI互換エンドポイントに変換（末尾が /v1 でない場合は補完）
+            if not url.endswith('/v1'):
+                url = url.rstrip('/') + '/v1'
+            model = args.ollama_model or "gemma4:e4b"
+            config.set_translation_api(enabled=True, base_url=url, model=model)
+            logger.info(f"   翻訳エンジンを上書き: Ollama ({model} @ {url})")
+        elif getattr(args, 'translation_engine', None) == 'google':
+             config.set_google_translate_enabled(True)
+             logger.info(f"   翻訳エンジンを上書き: Google Translate")
+        
         # =====================================
         # 設定の表示
         # =====================================
@@ -291,7 +319,17 @@ def main():
         def _is_hub_id(s: str) -> bool:
             return ("/" in s) and ("\\" not in s) and (":" not in s)
 
-        if tconf.gguf and tconf.gguf.enabled:
+        # Check for API/Google mode first for accurate logging
+        api_conf = tconf.api
+        google_conf = tconf.google
+        
+        if api_conf and api_conf.enabled:
+            logger.info(f"   翻訳エンジン: API Mode (OpenAI-compatible)")
+            logger.info(f"   翻訳モデル  : {api_conf.model}")
+            logger.info(f"   エンドポイント: {api_conf.base_url}")
+        elif google_conf and google_conf.enabled:
+            logger.info(f"   翻訳エンジン: Google Translate API")
+        elif tconf.gguf and tconf.gguf.enabled:
             # GGUF 優先：repo(=gguf.model_path) + file(=gguf.model_file)
             repo  = (tconf.gguf.model_path or "").strip()
             gfile = (tconf.gguf.model_file or "").strip()

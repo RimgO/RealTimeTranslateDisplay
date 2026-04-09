@@ -101,6 +101,7 @@ class TranslateApp {
     private sampleCtx: CanvasRenderingContext2D | null;
 
     private STORAGE_KEY = 'translate_app_settings';
+    private ollamaModelList: HTMLDataListElement;
 
     constructor() {
         this.videoElement = document.getElementById('display-video') as HTMLVideoElement;
@@ -161,6 +162,7 @@ class TranslateApp {
 
         this.inputOverlayBottom = document.getElementById('input-overlay-bottom') as HTMLInputElement;
         this.valOverlayBottom = document.getElementById('val-overlay-bottom') as HTMLElement;
+        this.ollamaModelList = document.getElementById('ollama-model-list') as HTMLDataListElement;
 
         this.sampleCanvas = document.createElement('canvas');
         this.sampleCanvas.width = 100;
@@ -173,7 +175,10 @@ class TranslateApp {
         this.initDeviceList();
 
         // Initial fetch of server config to sync slider (with slight delay)
-        setTimeout(() => this.fetchServerConfig(), 1000);
+        setTimeout(() => {
+            this.fetchServerConfig();
+            this.fetchOllamaModels();
+        }, 1000);
     }
 
     private async fetchServerConfig() {
@@ -605,6 +610,11 @@ class TranslateApp {
                 }));
             }
         });
+        
+        this.inputOllamaUrl.addEventListener('change', () => {
+            this.saveSettings();
+            this.fetchOllamaModels();
+        });
     }
 
     private updateSettingsVisibility() {
@@ -901,7 +911,10 @@ class TranslateApp {
                         target_lang: targetLang,
                         tts_enabled: this.checkTts.checked,
                         asr_engine: asrEngine,
-                        deepgram_api_key: this.inputDeepgramKey.value.trim()
+                        deepgram_api_key: this.inputDeepgramKey.value.trim(),
+                        translation_engine: this.selectEngine.value,
+                        ollama_url: this.inputOllamaUrl.value.trim(),
+                        ollama_model: this.inputOllamaModel.value.trim()
                     }
                 }));
             };
@@ -1224,6 +1237,30 @@ class TranslateApp {
             if (this.currentTranslationRequestID === requestID) {
                 this.isTranslating = false;
             }
+        }
+    }
+
+    private async fetchOllamaModels() {
+        try {
+            const baseUrl = this.inputOllamaUrl.value.trim();
+            if (!baseUrl) return;
+            
+            console.log(`Fetching Ollama models from ${baseUrl}...`);
+            const response = await fetch(`${baseUrl}/api/tags`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.models) {
+                    this.ollamaModelList.innerHTML = '';
+                    data.models.forEach((m: any) => {
+                        const opt = document.createElement('option');
+                        opt.value = m.name;
+                        this.ollamaModelList.appendChild(opt);
+                    });
+                    console.log(`Fetched ${data.models.length} models from Ollama`);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to fetch Ollama models', e);
         }
     }
 
